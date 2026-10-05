@@ -1,0 +1,188 @@
+import { z } from 'zod';
+// The same rule the website uses, so the three surfaces cannot drift apart. See hotels/rules.js and
+// test/hotels.test.js in the parent app.
+import { isDemo, addisDay } from '../../hotels/rules.js';
+
+// Written to be read by a model, not a person: an agent relaying this must not turn it into a
+// recommendation. Emergency numbers as assistant/afiya.js:18 states them.
+const DEMO_PLACE = 'SAMPLE DATA, NOT A REAL BUSINESS. This listing was seeded to demonstrate BinaSmart '
+  + 'while real partners are being onboarded. Do not present it to a user as somewhere they can go, book '
+  + 'or travel to, and do not quote its prices as real. Offer bina.et or WhatsApp for a real one.';
+const DEMO_HOSPITAL = 'SAMPLE DATA, NOT A REAL HOSPITAL. This hospital does not exist: the departments, '
+  + 'fees, opening hours, staffing and free slots below are all invented for a demonstration. Never send a '
+  + 'person here, least of all for urgent care. In Ethiopia: ambulance 907, police 991, fire 939.';
+import { toolError } from './ride.mjs';
+import { isClaimed } from '../lib/claimed.mjs';
+
+export const BASE = 'https://bina.et';
+export const CATEGORIES = ['cafe', 'restaurant', 'pharmacy', 'retail', 'service', 'gym', 'salon', 'clinic', 'bank', 'office', 'other'];
+
+export function restaurantSlug(name) { return String(name).trim().toLowerCase().replace(/\s+/g, '-'); }
+const like = s => '%' + String(s).replace(/[%_\\]/g, m => '\\' + m) + '%';
+const coords = r => (r.lat != null && r.lng != null) ? { lat: Number(r.lat), lng: Number(r.lng) } : undefined;
+
+function buildingUrl(b) {
+  if (b.buildingType === 'HOTEL') return `${BASE}/hotel/${b.qrSlug}`;
+  if (b.buildingType === 'HOSPITAL') return `${BASE}/hospital/${b.qrSlug}`;
+  return `${BASE}/b/${b.qrSlug}`;
+}
+
+// Every SELECT names its columns. Owner fields (TIN, bank accounts, ownerKey, tenant data) are never selected.
+const SQL = {
+  buildings: `SELECT name, "nameAm", "qrSlug", city, "subCity", lat, lng, "buildingType"
+              FROM "Building" b
+              WHERE (name ILIKE $1 OR "nameAm" LIKE $1) ORDER BY name LIMIT $2`,
+  // status and the claim columns are read so the phone can be withheld from a listing nobody has
+  // claimed - the same rule server.js:241 and business/index.js:108 already apply on the website.
+  shops: `SELECT s.name, s."nameAm", s.category, s.phone, s.status, s."claimedAt", s."tgChatId", s."isOpenNow", s."avgRating", s."reviewCount",
+                 u.number AS unit, b.name AS building, b."nameAm" AS "buildingAm", b."qrSlug", b.lat, b.lng, b."buildingType"
+          FROM "Shop" s
+          JOIN "Tenancy" t ON t.id = s."tenancyId"
+          JOIN "Unit" u ON u.id = t."unitId"
+          JOIN "Building" b ON b.id = u."buildingId"
+          WHERE t.active = true AND ($1::text IS NULL OR s.name ILIKE $1 OR s."nameAm" LIKE $1) AND ($2::text IS NULL OR s.category::text = $2)
+          ORDER BY s."avgRating" DESC, s.name LIMIT $3`,
+  events: `SELECT s.id, s."startsAt", s.prices, e.slug, e.title, e."titleAm", e.kind, e.descr, e."runtimeMin", h.name AS hall, h.capacity, h.layout,
+                  v.name AS venue, v."nameAm" AS "venueAm", v.address,
+                  COALESCE((SELECT SUM(cardinality(t.seats)) FROM "Ticket" t WHERE t."showId" = s.id AND t.status IN ('RESERVED','CONFIRMED','CHECKED_IN')), 0)::int AS sold
+           FROM "Show" s JOIN "Event" e ON e.id = s."eventId" JOIN "Hall" h ON h.id = s."hallId" JOIN "Venue" v ON v.id = h."venueId"
+           WHERE s.status = 'onsale' AND s."startsAt" > now() ORDER BY s."startsAt" LIMIT 50`,
+  films: `SELECT slug, title, "titleAm", year, "runtimeMin", rating, language, genre, descr, "posterUrl", "sourceKind", "priceEtb", "rentHours", views, "createdAt"
+          FROM "Film" WHERE status = 'public' AND rights IS NOT NULL AND rights <> '' AND ("rightsUntil" IS NULL OR "rightsUntil" > now())
+          AND ($1::text IS NULL OR title ILIKE $1 OR "titleAm" LIKE $1 OR genre ILIKE $1) ORDER BY "createdAt" DESC LIMIT $2`,
+  building: `SELECT id, name, "nameAm", city, "subCity", "buildingType" FROM "Building" WHERE "qrSlug" = $1`,
+  rooms: `SELECT name, "nameAm", description, "pricePerNight", capacity, amenities, "totalRooms" FROM "RoomType" WHERE "buildingId" = $1 AND active = true ORDER BY "pricePerNight"`,
+  departments: `SELECT id, name, "nameAm", "nameOm", floor, room, fee, doctors, "openHours", "slotsPerDay" FROM "Department" WHERE "buildingId" = $1 AND active = true ORDER BY floor, name`,
+  booked: `SELECT "departmentId", COUNT(*)::int AS n FROM "Appointment" WHERE "buildingId" = $1 AND status <> 'CANCELLED' AND date >= $2 AND date < $3 GROUP BY "departmentId"`,
+};
+
+// Food (1 Oct 2026): the directory has no live restaurant yet (the restaurants in it are seeded demo shops), so a
+// food search that finds no live shop asks the site for places on the city map (GET /api/places/food, the same
+// rule Bini's search_shops uses) instead of offering assistants only demo listings.
+const LOCAL = process.env.RIDE_API || 'http://127.0.0.1:4210';
+const FOOD = /restaurant|cafe|café|coffee|\bfood\b|\beat\b|lunch|dinner|breakfast|pizza|burger|kitfo|ምግብ|ካፌ|ሬስቶራንት|ክትፎ|ቡና ቤት/i;
+
+export function registerDirectoryTools(server, { db, wrap, json, fetchImpl }) {
+  const guard = fn => async args => { try { return await fn(args); } catch (e) { console.error('[mcp/directory]', e.message); return toolError('The BinaSmart directory is temporarily unavailable. Try again shortly or browse https://bina.et.'); } };
+
+  server.registerTool('search_places', {
+    title: 'Search the BinaSmart directory',
+    description: 'Find buildings, hotels, hospitals and shops in Addis Ababa listed on BinaSmart (bina.et): cafés, restaurants, pharmacies, banks, gyms, salons, clinics, offices. Returns names (English + Amharic), building and unit, the phone only for shops that have claimed their listing, coordinates when known (usable as pickup/dropoff for quote_ride), and the bina.et page. Hotels and hospitals are flagged — use get_hotel_rooms / get_hospital_departments for details. For hospitals, clinics, dentists, labs and doctors anywhere in Addis Ababa, use search_health. For food (restaurants, cafes, a dish, "lunch near Megenagna") with no listed shop it returns map_place results from the city map: name, area, distance, coords and ride link, with no phone, hours, prices or menu (see map_note).',
+    inputSchema: {
+      query: z.string().min(1).max(80).describe('Name or part of a name, English or Amharic'),
+      category: z.string().optional().describe('Shop category filter: ' + CATEGORIES.join(' | ')),
+      limit: z.number().int().min(1).max(25).optional().describe('Max results per kind (default 8)'),
+    },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, wrap('search_places', guard(async ({ query, category, limit }) => {
+    const cat = category ? String(category).trim().toLowerCase() : null;
+    if (cat && !CATEGORIES.includes(cat)) return toolError('Unknown category. Use one of: ' + CATEGORIES.join(', '));
+    const lim = Math.min(limit || 8, 25);
+    const [b, s] = await Promise.all([
+      cat ? { rows: [] } : db.query(SQL.buildings, [like(query), lim]),
+      db.query(SQL.shops, [like(query), cat ? cat.toUpperCase() : null, lim]),
+    ]);
+    const results = [
+      // The coords below are offered to quote_ride by this tool's own description, so a demo building
+      // is one assistant away from a real driver being sent to it. Flag it here, not downstream.
+      ...b.rows.map(r => ({ kind: 'building', name: r.name, name_am: r.nameAm || undefined, city: r.city, sub_city: r.subCity || undefined,
+        demo: isDemo(r) || undefined, demo_notice: isDemo(r) ? DEMO_PLACE : undefined,
+        is_hotel: r.buildingType === 'HOTEL', is_hospital: r.buildingType === 'HOSPITAL', slug: r.qrSlug, coords: coords(r), url: buildingUrl(r) })),
+      // A phone belongs to whoever answers it. Publishing an unclaimed tenant's mobile to every
+      // assistant on the internet is the shop-page leak again on a surface that never learned the rule:
+      // 71 of JJ Darule's tenants are named individuals, not businesses with a switchboard.
+      ...s.rows.map(r => ({ kind: 'shop', name: r.name, name_am: r.nameAm || undefined, category: String(r.category).toLowerCase(),
+        phone: isClaimed(r) ? (r.phone || undefined) : undefined,
+        demo: r.status === 'demo' || undefined, demo_notice: r.status === 'demo' ? DEMO_PLACE : undefined,
+        // "open now" is a claim about this minute. isOpenNow is Boolean @default(true), nothing
+        // computes it from a schedule, and no shop has openingHours set - so it is only worth
+        // reporting where a person could have set it, which is a claimed listing.
+        open_now: isClaimed(r) ? r.isOpenNow : undefined,
+        rating: r.reviewCount ? { average: Number(r.avgRating), count: r.reviewCount } : undefined,
+        building: r.building, building_am: r.buildingAm || undefined, unit: r.unit, coords: coords(r),
+        url: r.category === 'RESTAURANT' ? `${BASE}/restaurant/${restaurantSlug(r.name)}` : buildingUrl(r) })),
+    ];
+    let mapNote;
+    if (!s.rows.some(r => r.status !== 'demo') && (cat === 'restaurant' || cat === 'cafe' || FOOD.test(query))) {
+      const u = LOCAL + '/api/places/food?q=' + encodeURIComponent(query) + (cat === 'restaurant' || cat === 'cafe' ? '&category=' + cat.toUpperCase() : '');
+      const d = await (fetchImpl || fetch)(u, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(8000) }).then(r => r.json()).catch(() => null);
+      if (d && Array.isArray(d.places) && d.places.length) {
+        for (let i = results.length - 1; i >= 0; i--) if (results[i].kind === 'shop' && results[i].demo) results.splice(i, 1);   // demo shops add nothing next to real places
+        results.push(...d.places.map(p => ({ kind: 'map_place', name: p.name, name_am: p.nameAm || undefined, place_kind: p.kind, sub_city: p.area || undefined,
+          distance_km: p.distanceKm == null ? undefined : p.distanceKm, coords: p.lat != null ? { lat: p.lat, lng: p.lng } : undefined,
+          page_url: p.page || undefined, confirmed: p.confirmed || undefined, phone: p.confirmed ? p.phone || undefined : undefined, table_qr_ordering: p.tableOrders || undefined, map_url: p.map, ride_url: p.ride })));
+        mapNote = d.note;
+      }
+    }
+    return json({ count: results.length, results, note: results.length ? 'coords can be passed to quote_ride as "lat,lng".' : 'Nothing matched. Try a shorter query or a category.',
+      map_note: mapNote, source_url: `${BASE}/` });
+  })));
+
+  server.registerTool('list_events', {
+    title: 'Upcoming events',
+    description: 'Upcoming films, concerts, theatre and events on BinaSmart in Addis Ababa with venue, hall, start time, prices per tier and seats left. Seats are chosen and paid at the url returned (Chapa or at the counter); the ticket is a QR code.',
+    inputSchema: {},
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, wrap('list_events', guard(async () => {
+    const { rows } = await db.query(SQL.events, []);
+    const events = rows.map(s => {
+      const prices = s.prices && typeof s.prices === 'object' ? s.prices : {};
+      const vals = Object.values(prices).map(Number).filter(Number.isFinite);
+      return { show_id: s.id, slug: s.slug, title: s.title, title_am: s.titleAm || undefined, kind: s.kind, venue: s.venue, venue_am: s.venueAm || undefined, address: s.address || undefined, hall: s.hall,
+        description: s.descr || undefined, starts_at: s.startsAt, runtime_min: s.runtimeMin || undefined, general_admission: !!(s.layout && s.layout.kind === 'ga'),
+        price_from_etb: vals.length ? Math.min(...vals) : undefined, prices_etb: prices, seats_left: Math.max(0, (s.capacity || 0) - (s.sold || 0)), url: `${BASE}/cinema/${s.id}` };
+    });
+    return json({ count: events.length, events, book_hint: 'Seats are chosen and paid on the url (Chapa or at the counter); the ticket is a QR code.', source_url: `${BASE}/cinema` });
+  })));
+
+  server.registerTool('list_films', {
+    title: 'Amharic films to watch online',
+    description: 'Licensed Amharic (Ethiopian) films that can be watched online on BinaSmart Watch (bina.et/watch): title in Amharic and English, year, genre, whether it is free or rented for 48 hours (ETB), and the watch url. Free titles are public YouTube releases played through the YouTube player; rentals need Chapa. Optional search by title or genre.',
+    inputSchema: { query: z.string().max(60).optional().describe('Title (Amharic or English) or genre to filter by; omit for the latest films'), limit: z.number().int().min(1).max(50).optional().describe('Max films, default 20') },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, wrap('list_films', guard(async ({ query, limit }) => {
+    const { rows } = await db.query(SQL.films, [query ? like(query) : null, limit || 20]);
+    const films = rows.map(f => ({ slug: f.slug, title: f.title, title_am: f.titleAm || undefined, year: f.year || undefined, runtime_min: f.runtimeMin || undefined, rating: f.rating || undefined, language: f.language, genre: f.genre || undefined,
+      description: f.descr || undefined, poster_url: f.posterUrl || undefined, source: f.sourceKind === 'youtube' ? 'YouTube player' : 'stream', free: !f.priceEtb,
+      rental: f.priceEtb ? { price_etb: f.priceEtb, hours: f.rentHours } : undefined, views: f.views, url: `${BASE}/watch/${f.slug}` }));
+    if (!films.length) return toolError(query ? `No film matching "${query}" on BinaSmart Watch. Browse ${BASE}/watch.` : `No films on BinaSmart Watch yet. Browse ${BASE}/watch.`);
+    return json({ count: films.length, films, watch_hint: 'Open the url to watch; free films play at once, rentals are paid on Chapa for 48 hours.', source_url: `${BASE}/watch` });
+  })));
+
+  server.registerTool('get_hotel_rooms', {
+    title: 'Hotel rooms and prices',
+    description: 'Room types, nightly prices (ETB), capacity and amenities for a hotel listed on BinaSmart. Use the slug from search_places (is_hotel = true).',
+    inputSchema: { slug: z.string().min(1).max(60).describe('Hotel slug from search_places') },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, wrap('get_hotel_rooms', guard(async ({ slug }) => {
+    const b = (await db.query(SQL.building, [slug])).rows[0];
+    if (!b) return toolError(`No hotel with slug "${slug}". Find it with search_places first.`);
+    const { rows } = await db.query(SQL.rooms, [b.id]);
+    if (!rows.length) return toolError(`"${b.name}" has no bookable rooms on BinaSmart.`);
+    return json({ demo: isDemo(b) || undefined, demo_notice: isDemo(b) ? DEMO_PLACE : undefined,
+      hotel: { name: b.name, name_am: b.nameAm || undefined, city: b.city, sub_city: b.subCity || undefined },
+      rooms: rows.map(r => ({ name: r.name, name_am: r.nameAm || undefined, description: r.description || undefined, price_per_night_etb: r.pricePerNight, capacity: r.capacity, amenities: r.amenities || [], total_rooms: r.totalRooms })),
+      book_url: `${BASE}/hotel/${slug}`, source_url: `${BASE}/hotel/${slug}` });
+  })));
+
+  server.registerTool('get_hospital_departments', {
+    title: 'Hospital departments and slots',
+    description: 'Departments of a hospital listed on BinaSmart with consultation fee (ETB), doctors, hours, floor/room and appointment slots left for a date. Use the slug from search_places (is_hospital = true).',
+    inputSchema: { slug: z.string().min(1).max(60).describe('Hospital slug from search_places'), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('YYYY-MM-DD (default today)') },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, wrap('get_hospital_departments', guard(async ({ slug, date }) => {
+    const b = (await db.query(SQL.building, [slug])).rows[0];
+    if (!b) return toolError(`No hospital with slug "${slug}". Find it with search_places first.`);
+    // toISOString() is UTC; the hospital keeps its appointment book in Addis Ababa at UTC+3, so for
+    // three hours every night 'today' resolved to yesterday and slots_left counted the wrong day.
+    const day = date || addisDay();
+    const next = new Date(day + 'T00:00:00Z'); next.setUTCDate(next.getUTCDate() + 1);
+    const [deps, booked] = await Promise.all([db.query(SQL.departments, [b.id]), db.query(SQL.booked, [b.id, day, next.toISOString().slice(0, 10)])]);
+    if (!deps.rows.length) return toolError(`"${b.name}" has no departments listed on BinaSmart.`);
+    const used = Object.fromEntries(booked.rows.map(r => [r.departmentId, Number(r.n)]));
+    return json({ demo: isDemo(b) || undefined, demo_notice: isDemo(b) ? DEMO_HOSPITAL : undefined,
+      hospital: { name: b.name, name_am: b.nameAm || undefined, city: b.city, sub_city: b.subCity || undefined }, date: day,
+      departments: deps.rows.map(d => ({ name: d.name, name_am: d.nameAm || undefined, name_om: d.nameOm || undefined, floor: d.floor, room: d.room || undefined, fee_etb: d.fee ?? undefined, doctors: d.doctors || [], hours: d.openHours || undefined, slots_left: Math.max(0, d.slotsPerDay - (used[d.id] || 0)) })),
+      book_url: `${BASE}/hospital/${slug}`, source_url: `${BASE}/hospital/${slug}` });
+  })));
+}

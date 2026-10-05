@@ -1,0 +1,144 @@
+// BinaSmart public MCP server (streamable HTTP, stateless). pm2 "bina-mcp" on 127.0.0.1:3021;
+// nginx proxies https://bina.et/mcp here. Docs: GET /mcp.
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import express from 'express';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { makeLimiter } from './lib/limiter.mjs';
+import apiGate from '../api/gate.js';
+import apiKeystore from '../api/keystore.js';
+import { envValue } from './lib/env.mjs';
+import { registerRideTools, toolError } from './tools/ride.mjs';
+import { registerDirectoryTools } from './tools/directory.mjs';
+import { registerGuideTools, loadGuides } from './tools/guides.mjs';
+import { registerKnowledgeTools } from './tools/knowledge.mjs';
+import { registerContentTools } from './tools/content.mjs';
+import { registerJobTools } from './tools/jobs.mjs';
+import { registerMarketTools } from './tools/market.mjs';
+import { registerHealthTools } from './tools/health.mjs';
+
+const { makeGate } = apiGate;
+const { makeKeystore } = apiKeystore;
+const API_KEY_PEPPER = envValue('API_KEY_PEPPER');
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const VERSION = JSON.parse(fs.readFileSync(path.join(here, 'package.json'), 'utf8')).version;
+const DOCS_MD = fs.existsSync(path.join(here, 'docs.md')) ? fs.readFileSync(path.join(here, 'docs.md'), 'utf8') : '# BinaSmart MCP server\n';
+
+const INSTRUCTIONS =
+  'BinaSmart (bina.et) is Ethiopia\'s all-in-one digital platform. Tools: fixed-price ride-hailing in Addis Ababa only ' +
+  '(quote_ride → request_ride → get_ride_status / cancel_ride), a directory of buildings, hotels, hospitals and shops ' +
+  '(search_places, get_hotel_rooms, get_hospital_departments), hospitals, clinics, dentists, labs and doctors across Addis with ' +
+  'their bina.et/health pages (search_health; not medical advice, emergencies 907), homes for sale and rent (search_properties), cars for sale ' +
+  '(search_cars), hotels and guest houses (search_hotels), upcoming events (list_events), open Ethiopian tender ' +
+  'notices with deadlines (list_tenders, list_tender_categories, get_tender), Amharic news (list_news, ' +
+  'get_news_article), 24 bilingual Digital ' +
+  'Ethiopia guides (get_ethiopia_guide), BinaPool shared commute (list_pool_corridors, find_pool_groups) and a knowledge ' +
+  'base about every BinaSmart service and practical Addis Ababa life (search_knowledge — call it first for any question ' +
+  'about BinaSmart, Ethiopian paperwork or getting around Addis). Before request_ride ALWAYS confirm pickup, drop-off, tier, ' +
+  'fare and the rider\'s Ethiopian phone with the user. Never invent fares or official portal names — quote_ride, the pool ' +
+  'board and the guides hold them. Cite source_url in answers. Site guide: https://bina.et/llms.txt';
+
+export function json(data) { return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] }; }
+
+// One McpServer per request (stateless). `callerKey` feeds the per-caller limiters.
+export function buildServer({ rideApi, db, guides, callerKey, callsRL, bookRL }) {
+  const server = new McpServer({ name: 'binasmart', version: VERSION }, { instructions: INSTRUCTIONS });
+  const wrap = (name, fn) => async (args) => {
+    if (!callsRL(callerKey)) return toolError('Slow down — too many tool calls from this session. Wait a minute and try again.');
+    if (name === 'request_ride' && !bookRL(callerKey)) return toolError('Slow down — this session has booked too many rides this hour.');
+    const t0 = Date.now(); let ok = true;
+    try { const r = await fn(args); ok = !r.isError; return r; }
+    catch (e) { ok = false; console.error(`[mcp] ${name} threw:`, e && e.message); return toolError('Internal error in BinaSmart MCP. Try again or use https://bina.et.'); }
+    finally { console.log(JSON.stringify({ t: 'tool', name, ms: Date.now() - t0, ok, caller: String(callerKey).slice(0, 24) })); }
+  };
+  registerRideTools(server, { api: rideApi, wrap, json });
+  registerDirectoryTools(server, { db, wrap, json });
+  registerGuideTools(server, { guides, wrap, json });
+  registerKnowledgeTools(server, { api: rideApi, wrap, json });
+  registerContentTools(server, { db, wrap, json });
+  registerJobTools(server, { db, wrap, json });
+  registerMarketTools(server, { wrap, json });
+  registerHealthTools(server, { wrap, json });
+  return server;
+}
+
+export function createApp({ rideApi, db, guides, callLimit = { windowMs: 60_000, max: 30 }, bookLimit = { windowMs: 3_600_000, max: 10 },
+  // The meter (api/gate.js), shared with binasmart-api through /root/storage/api/usage: ONE anonymous
+  // allowance across bina.et/mcp and bina.et/api/knowledge/search, because they are two doors onto the
+  // same 23,463 chunks. Injectable so a test never writes to the real counter directory.
+  gate = makeGate({ proc: 'mcp', proxyHeader: 'x-real-ip', salt: API_KEY_PEPPER,
+    keystore: makeKeystore({ pepper: API_KEY_PEPPER }),
+    anonPerHour: Number(envValue('API_ANON_PER_HOUR') || 20) }) }) {
+  const callsRL = makeLimiter(callLimit.windowMs, callLimit.max);
+  const bookRL = makeLimiter(bookLimit.windowMs, bookLimit.max);
+  const app = express();
+  app.set('trust proxy', 'loopback');
+  app.use(express.json({ limit: '1mb' }));
+  app.use((req, res, next) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Mcp-Session-Id, Mcp-Protocol-Version, Authorization, X-API-Key');
+    res.setHeader('Access-Control-Expose-Headers', 'Mcp-Session-Id');
+    if (req.method === 'OPTIONS') return res.sendStatus(204);
+    next();
+  });
+
+  app.post('/mcp', async (req, res) => {
+    // The handshake - initialize, the notifications that follow it, ping - is recorded but not charged.
+    // It costs a harvester nothing, and charging it would spend a fifth of an honest assistant's hourly
+    // allowance before the person has asked anything.
+    const method = String((req.body && req.body.method) || '');
+    const free = method === 'initialize' || method === 'ping' || method.startsWith('notifications/');
+    const d = gate.check({ headers: req.headers, ip: req.ip, endpoint: free ? 'mcp:' + (method || 'unknown') : 'mcp', charge: !free });
+    if (!d.allowed) {
+      res.setHeader('Retry-After', String(d.retryAfter));
+      return res.status(d.status).json(d.body);
+    }
+    // Who is being counted: the API key if there is one, otherwise the address nginx saw. It used to be
+    // Mcp-Session-Id first - a value the CLIENT invents - which made the 30-calls-a-minute limit below an
+    // honour system: a new session id per call and it never fired. The session id keeps its own job,
+    // MCP's session semantics, and no longer decides anything about rate limiting.
+    const callerKey = d.caller;
+    try {
+      const server = buildServer({ rideApi, db, guides, callerKey, callsRL, bookRL });
+      const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+      res.on('close', () => { transport.close(); server.close(); });
+      await server.connect(transport);
+      await transport.handleRequest(req, res, req.body);
+    } catch (e) {
+      console.error('[mcp] transport error:', e && e.message);
+      if (!res.headersSent) res.status(500).json({ jsonrpc: '2.0', error: { code: -32603, message: 'Internal error' }, id: null });
+    }
+  });
+  // MCP clients open GET /mcp with Accept: text/event-stream for server→client notifications. This
+  // stateless server has none; answering 405 (allowed by the spec) stops clients re-polling every second.
+  // Browsers and crawlers (Accept: text/html or */*) get the docs.
+  app.get('/mcp', (req, res) => {
+    if (/text\/event-stream/i.test(req.headers.accept || '')) return res.sendStatus(405);
+    res.setHeader('Content-Type', 'text/markdown; charset=utf-8'); res.setHeader('Cache-Control', 'public, max-age=3600'); res.send(DOCS_MD);
+  });
+  app.delete('/mcp', (_req, res) => res.sendStatus(405));
+  app.get('/mcp/health', async (_req, res) => {
+    const out = { ok: true, db: true, ride_api: true };
+    try { await db.query('SELECT 1', []); } catch { out.db = false; }
+    try { const s = await rideApi.settings(); if (!s || s.ok === false) out.ride_api = false; } catch { out.ride_api = false; }
+    out.ok = out.db && out.ride_api;
+    res.status(out.ok ? 200 : 503).json(out);
+  });
+  return app;
+}
+
+// Entry point is start.mjs (pm2 runs scripts through its own wrapper, so an argv[1] "run if main" check never fires).
+export async function main() {
+  const [{ default: pg }, { databaseUrl }, { makeRideApi }] = await Promise.all([import('pg'), import('./lib/env.mjs'), import('./lib/rideApi.mjs')]);
+  const PORT = Number(process.env.PORT || 3021);
+  const db = new pg.Pool({ connectionString: databaseUrl(), max: 4, idleTimeoutMillis: 30_000 });
+  db.on('error', e => console.error('[mcp] pg pool error:', e.message));
+  const rideApi = makeRideApi({ baseUrl: process.env.RIDE_API || 'http://127.0.0.1:4210', timeoutMs: 8000 });
+  const guides = await loadGuides(path.join(here, '..', 'public'));
+  const app = createApp({ rideApi, db, guides });
+  app.listen(PORT, '127.0.0.1', () => console.log(`binasmart MCP server on 127.0.0.1:${PORT}, guides loaded: ${guides.size}`));
+}

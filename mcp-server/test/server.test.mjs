@@ -1,0 +1,69 @@
+import { test, after } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { createApp } from '../server.mjs';
+import apiGate from '../../api/gate.js';
+
+const guides = new Map([['fayda', { slug: 'fayda', title: 'Fayda', summary: 'ID', url: 'https://bina.et/fayda', text: '# Fayda\nHello' }]]);
+const db = { query: async () => ({ rows: [] }) };
+const api = { search: async () => ({ ok: true, results: [] }), quote: async () => ({}), request: async () => ({}), status: async () => ({}), cancel: async () => ({}), settings: async () => ({ ok: true }) };
+// A meter on a throwaway directory: the real counters live in /root/storage/api/usage and a test run
+// must not spend the server's allowance or leave rows in its accounting.
+const gate = apiGate.makeGate({ dir: fs.mkdtempSync(path.join(os.tmpdir(), 'bina-mcp-gate-')), proc: 'mcp-test', proxyHeader: 'x-real-ip', anonPerHour: 1000 });
+const app = createApp({ rideApi: api, db, guides, callLimit: { windowMs: 60_000, max: 3 }, gate });
+const srv = app.listen(0, '127.0.0.1');
+await new Promise(r => srv.once('listening', r));
+const url = `http://127.0.0.1:${srv.address().port}/mcp`;
+after(() => srv.close());
+
+async function rpc(method, params, headers = {}) {
+  const res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', ...headers }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) });
+  const text = await res.text();
+  const line = text.split('\n').find(l => l.startsWith('data:'));
+  return JSON.parse(line ? line.slice(5) : text);
+}
+
+test('GET /mcp serves markdown docs; /mcp/health answers', async () => {
+  const r = await fetch(url); assert.equal(r.status, 200); assert.match(r.headers.get('content-type'), /markdown/);
+  assert.match(await r.text(), /BinaSmart/);
+  const h = await fetch(url + '/health'); assert.equal(h.status, 200); assert.deepEqual(await h.json(), { ok: true, db: true, ride_api: true });
+});
+
+test('initialize + tools/list exposes exactly the 26 tools with annotations', async () => {
+  const init = await rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '1' } });
+  assert.equal(init.result.serverInfo.name, 'binasmart');
+  assert.match(init.result.instructions, /Addis Ababa/);
+  const list = await rpc('tools/list', {});
+  const names = list.result.tools.map(t => t.name).sort();
+  // 18 until the jobs tools (get_employer, get_job, list_job_fields, list_jobs), the market tools (search_cars, search_hotels,
+  // search_properties) and search_health (bina.et/health, 30 Sep 2026) were added without this list following them.
+  assert.deepEqual(names, ['cancel_ride', 'find_pool_groups', 'get_employer', 'get_ethiopia_guide', 'get_hospital_departments', 'get_hotel_rooms', 'get_job', 'get_news_article', 'get_ride_status', 'get_tender', 'list_events', 'list_films', 'list_job_fields', 'list_jobs', 'list_news', 'list_pool_corridors', 'list_tender_categories', 'list_tenders', 'quote_ride', 'request_ride', 'search_cars', 'search_health', 'search_hotels', 'search_knowledge', 'search_places', 'search_properties']);
+  assert.match(init.result.instructions, /search_health/);
+  const req = list.result.tools.find(t => t.name === 'request_ride');
+  assert.equal(req.annotations.readOnlyHint, false);
+  assert.equal(list.result.tools.find(t => t.name === 'cancel_ride').annotations.destructiveHint, true);
+});
+
+// The caller is the address nginx saw, NOT Mcp-Session-Id: that header is chosen by the client, so
+// keying the limit on it meant a new id per call bypassed it entirely.
+test('tools/call runs a tool; per-caller limit returns a tool error after max calls', async () => {
+  const h = { 'x-real-ip': '41.86.1.1' };
+  const r1 = await rpc('tools/call', { name: 'get_ethiopia_guide', arguments: { slug: 'fayda' } }, h);
+  assert.match(r1.result.content[0].text, /"title": "Fayda"/);
+  await rpc('tools/call', { name: 'get_ethiopia_guide', arguments: {} }, h);
+  await rpc('tools/call', { name: 'get_ethiopia_guide', arguments: {} }, h);
+  const r4 = await rpc('tools/call', { name: 'get_ethiopia_guide', arguments: {} }, h);
+  assert.equal(r4.result.isError, true); assert.match(r4.result.content[0].text, /slow down/i);
+  const renamed = await rpc('tools/call', { name: 'get_ethiopia_guide', arguments: {} }, { 'x-real-ip': '41.86.1.1', 'mcp-session-id': 'a-brand-new-session' });
+  assert.equal(renamed.result.isError, true, 'inventing a new session id must not buy a fresh allowance');
+  const other = await rpc('tools/call', { name: 'get_ethiopia_guide', arguments: {} }, { 'x-real-ip': '102.22.3.4' });
+  assert.notEqual(other.result.isError, true, 'independent caller unaffected');
+});
+
+test('invalid arguments are rejected before the handler runs', async () => {
+  const r = await rpc('tools/call', { name: 'quote_ride', arguments: { pickup: 'x' } }, { 'mcp-session-id': 'sess-C' });
+  assert.ok(r.error || r.result.isError, 'zod rejects missing dropoff');
+  assert.match(JSON.stringify(r), /dropoff/);
+});
