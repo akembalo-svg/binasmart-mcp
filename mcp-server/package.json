@@ -1,6 +1,6 @@
 {
   "name": "binasmart-mcp",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
   "description": "Public MCP server for BinaSmart (bina.et): quote and book rides in Addis Ababa, search the building/shop directory, read the Digital Ethiopia guides.",
@@ -14,5 +14,11 @@
     "express": "^4.21.0",
     "pg": "^8.13.0",
     "zod": "^3.24.0"
-  }
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/akembalo-svg/binasmart-mcp.git"
+  },
+  "homepage": "https://bina.et/mcp"
 }
