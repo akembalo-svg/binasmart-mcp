@@ -58,10 +58,10 @@ export function registerMarketTools(server, { wrap, json }) {
 
   server.registerTool('search_hotels', {
     title: 'Hotels and guest houses in Addis Ababa',
-    description: 'Hotels, guest houses, pensions, hostels and furnished apartments in Addis Ababa from BinaSmart\'s directory (1,000+ places from the city map): name, type, sub-city, stars, the hotel\'s own office phone and website, and its bina.et page. It has NO prices or free rooms - tell the guest to call the hotel.',
+    description: 'Hotels, guest houses, pensions, hostels and furnished apartments in Addis Ababa from BinaSmart\'s directory (1,000+ places from the city map): name, type, sub-city, stars, the hotel\'s own office phone and website, and its bina.et page. It has NO prices or free rooms - tell the guest to call the hotel. Not for hospitals or clinics (use search_health) or for shops, restaurants and other buildings (use search_places).',
     inputSchema: {
       area: z.string().max(40).optional().describe('Sub-city or area in English or Amharic, e.g. Bole, Kirkos, Arada, ቦሌ'),
-      kind: z.enum(['hotel', 'guest_house', 'hostel', 'motel', 'apartment']).optional(),
+      kind: z.enum(['hotel', 'guest_house', 'hostel', 'motel', 'apartment']).optional().describe('hotel; guest_house (also pensions, ፔንስዮን, መኝታ); hostel; motel; apartment (furnished apartments and suites)'),
       min_stars: z.number().int().min(1).max(5).optional(),
       name: z.string().max(60).optional().describe('Part of the hotel name'),
       limit: z.number().int().min(1).max(10).optional().describe('Max results, default 6'),
