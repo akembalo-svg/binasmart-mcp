@@ -1,0 +1,27 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "et.bina/binasmart",
+  "title": "BinaSmart",
+  "description": "Ethiopia: Addis rides, jobs, tenders, hotels, health, homes, cars, news and government guides",
+  "version": "1.2.1",
+  "websiteUrl": "https://bina.et/mcp",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://bina.et/mcp"
+    }
+  ],
+  "icons": [
+    {
+      "src": "https://bina.et/static/brand-logo.png",
+      "mimeType": "image/png",
+      "sizes": [
+        "512x512"
+      ]
+    }
+  ],
+  "repository": {
+    "url": "https://github.com/akembalo-svg/binasmart-mcp",
+    "source": "github"
+  }
+}

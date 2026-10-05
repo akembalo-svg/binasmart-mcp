@@ -36,3 +36,6 @@ BinaSmart (bina.et) is Ethiopia's all-in-one digital platform: fixed-price ride-
 Rides: 5 requests per 10 minutes per phone; 30 tool calls/min and 10 bookings/hour per session. Addis Ababa only. Fares are fixed at quote time — no surge.
 
 Questions: https://bina.et · WhatsApp https://wa.me/251911244344
+
+## Source and licence
+Source code: https://github.com/akembalo-svg/binasmart-mcp (MIT licence) · Changelog: https://github.com/akembalo-svg/binasmart-mcp/blob/main/CHANGELOG.md · MCP Registry: et.bina/binasmart
