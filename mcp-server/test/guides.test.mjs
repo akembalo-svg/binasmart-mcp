@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
@@ -42,8 +43,10 @@ test('loadGuides reads slug.html files, skips missing ones, caps text', async ()
 // 2026-09-12. "The guides" is maintained by hand in three places — a route in server.js, a URL in the
 // sitemap array, and GUIDE_SLUGS. Diffing them found ethiopia-income-tax-calculator published and
 // indexed but absent here, so every assistant calling get_ethiopia_guide was blind to the PAYE bands.
-test('every slug in GUIDE_SLUGS names a page that exists', async () => {
-  const pub = path.join(here, '..', '..', 'public');
+// Needs the main app's public/ folder; the standalone public repo (github.com/akembalo-svg/binasmart-mcp) has none, so CI skips it.
+const PUB = path.join(here, '..', '..', 'public');
+test('every slug in GUIDE_SLUGS names a page that exists', { skip: !existsSync(PUB) && 'needs the main app public/ folder' }, async () => {
+  const pub = PUB;
   const missing = [];
   for (const slug of GUIDE_SLUGS) {
     try { await readFile(path.join(pub, slug + '.html'), 'utf8'); } catch { missing.push(slug); }

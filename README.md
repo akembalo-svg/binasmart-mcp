@@ -1,5 +1,7 @@
 # BinaSmart MCP server
 
+[![MCP Registry](https://img.shields.io/badge/MCP%20Registry-et.bina%2Fbinasmart-0b7d6b)](https://registry.modelcontextprotocol.io) [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 The public [Model Context Protocol](https://modelcontextprotocol.io) server for **BinaSmart** ([bina.et](https://bina.et)), Ethiopia's all-in-one platform. Any MCP-capable assistant (Claude, ChatGPT, Gemini and others) can use it to:
 
 - **Ride in Addis Ababa**: quote fixed fares, book a ride (the user confirms first), check its status, cancel it
