@@ -8,7 +8,16 @@
     "url": "https://bina.et"
   },
   "homepage": "https://bina.et/ai",
+  "privacyPolicyUrl": "https://bina.et/privacy",
   "repository": "https://github.com/akembalo-svg/binasmart-mcp",
   "license": "MIT",
-  "keywords": ["ethiopia", "addis-ababa", "ride-hailing", "jobs", "tenders", "government-services", "amharic"]
+  "keywords": [
+    "ethiopia",
+    "addis-ababa",
+    "ride-hailing",
+    "jobs",
+    "tenders",
+    "government-services",
+    "amharic"
+  ]
 }
