@@ -18,6 +18,8 @@ import { registerContentTools } from './tools/content.mjs';
 import { registerJobTools } from './tools/jobs.mjs';
 import { registerMarketTools } from './tools/market.mjs';
 import { registerHealthTools } from './tools/health.mjs';
+import { registerAgencyTools } from './tools/agencies.mjs';
+import { registerWidgets } from './lib/widgets.mjs';
 
 const { makeGate } = apiGate;
 const { makeKeystore } = apiKeystore;
@@ -35,10 +37,11 @@ const INSTRUCTIONS =
   '(search_cars), hotels and guest houses (search_hotels), upcoming events (list_events), open Ethiopian tender ' +
   'notices with deadlines (list_tenders, list_tender_categories, get_tender), Amharic news (list_news, ' +
   'get_news_article), 24 bilingual Digital ' +
-  'Ethiopia guides (get_ethiopia_guide), BinaPool shared commute (list_pool_corridors, find_pool_groups) and a knowledge ' +
+  'Ethiopia guides (get_ethiopia_guide), licensed Ethiopian overseas employment agencies with their GCC partner offices (list_overseas_agencies), BinaPool shared commute (list_pool_corridors, find_pool_groups) and a knowledge ' +
   'base about every BinaSmart service and practical Addis Ababa life (search_knowledge — call it first for any question ' +
   'about BinaSmart, Ethiopian paperwork or getting around Addis). Before request_ride ALWAYS confirm pickup, drop-off, tier, ' +
-  'fare and the rider\'s Ethiopian phone with the user. Never invent fares or official portal names — quote_ride, the pool ' +
+  'fare and the rider\'s Ethiopian phone with the user. If you cannot or should not book, give the user the book_url from ' +
+  'quote_ride: it opens bina.et/ride with that route and fixed fare, and they confirm it themselves. Never invent fares or official portal names — quote_ride, the pool ' +
   'board and the guides hold them. Cite source_url in answers. Site guide: https://bina.et/llms.txt';
 
 export function json(data) { return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] }; }
@@ -56,12 +59,14 @@ export function buildServer({ rideApi, db, guides, callerKey, callsRL, bookRL })
   };
   registerRideTools(server, { api: rideApi, wrap, json });
   registerDirectoryTools(server, { db, wrap, json });
+  registerAgencyTools(server, { wrap, json });
   registerGuideTools(server, { guides, wrap, json });
   registerKnowledgeTools(server, { api: rideApi, wrap, json });
   registerContentTools(server, { db, wrap, json });
   registerJobTools(server, { db, wrap, json });
   registerMarketTools(server, { wrap, json });
   registerHealthTools(server, { wrap, json });
+  registerWidgets(server);
   return server;
 }
 
@@ -91,7 +96,10 @@ export function createApp({ rideApi, db, guides, callLimit = { windowMs: 60_000,
     // It costs a harvester nothing, and charging it would spend a fifth of an honest assistant's hourly
     // allowance before the person has asked anything.
     const method = String((req.body && req.body.method) || '');
-    const free = method === 'initialize' || method === 'ping' || method.startsWith('notifications/');
+    // Reading a ui:// widget page (MCP Apps) is free as well: the same static HTML for everyone, not data. 2026-10-11
+    const uri = String((req.body && req.body.params && req.body.params.uri) || '');
+    const free = method === 'initialize' || method === 'ping' || method.startsWith('notifications/')
+      || method === 'resources/list' || (method === 'resources/read' && uri.startsWith('ui://'));
     const d = gate.check({ headers: req.headers, ip: req.ip, endpoint: free ? 'mcp:' + (method || 'unknown') : 'mcp', charge: !free });
     if (!d.allowed) {
       res.setHeader('Retry-After', String(d.retryAfter));

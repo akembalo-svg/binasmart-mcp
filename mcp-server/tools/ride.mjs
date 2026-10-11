@@ -53,6 +53,13 @@ async function resolveBoth(api, pickup, dropoff) {
 }
 
 function pubQuote(q) { return { tier: q.tier, label: q.label, label_am: q.labelAm, seats: q.seats, fare_etb: q.fareEtb, eta_min: q.etaMin }; }
+// One-tap link to bina.et/ride with both points pinned (and the tier, if given): the rider sees the same fixed fare and
+// confirms with their own phone. For assistants that will not, or may not, call request_ride themselves (9 Oct 2026).
+function bookUrl(from, to, tier) {
+  const u = new URLSearchParams({ from: from.label, flat: String(from.lat), flng: String(from.lng), to: to.label, lat: String(to.lat), lng: String(to.lng) });
+  if (tier) u.set('tier', tier);
+  return `${BASE}/ride?${u}`;
+}
 function pubRide(r) {
   return { ride_id: r.id, status: r.status, tier: r.tier, fare_etb: r.fareEtb, payment_method: r.paymentMethod, payment_status: r.paymentStatus,
     pickup: r.pickup && r.pickup.label, dropoff: r.dropoff && r.dropoff.label, requested_at: r.requestedAt, concierge: r.concierge,
@@ -66,7 +73,7 @@ const PHONE_MSG = 'rider_phone must be an Ethiopian mobile number: 09XXXXXXXX or
 export function registerRideTools(server, { api, wrap, json }) {
   server.registerTool('quote_ride', {
     title: 'Quote a BinaSmart ride',
-    description: 'Fixed upfront price for a ride inside Addis Ababa, Ethiopia — no surge, cash or telebirr/Chapa. Returns distance, ETA and the fare for every vehicle tier (moto, bajaj, economy, comfort, XL). Call this before request_ride and read the fare to the user.',
+    description: 'Fixed upfront price for a ride inside Addis Ababa, Ethiopia — no surge, cash or telebirr/Chapa. Returns distance, ETA and the fare for every vehicle tier (moto, bajaj, economy, comfort, XL). Call this before request_ride and read the fare to the user. Also returns book_url: a one-tap bina.et link with this route and fare for the user to confirm.',
     inputSchema: { pickup: z.string().min(2).max(120).describe(placeDesc('Pickup')), dropoff: z.string().min(2).max(120).describe(placeDesc('Drop-off')) },
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, wrap('quote_ride', async ({ pickup, dropoff }) => {
@@ -74,7 +81,9 @@ export function registerRideTools(server, { api, wrap, json }) {
       const r = await resolveBoth(api, pickup, dropoff); if (r.err) return r.err;
       const q = await api.quote(r.from, r.to);
       return json({ pickup: r.from.label, dropoff: r.to.label, distance_km: Math.round(q.distanceM / 100) / 10, eta_min: Math.round(q.durationS / 60), estimate: !!q.estimate,
-        quotes: q.quotes.map(pubQuote), note: 'Fixed price, no surge. Pay cash or telebirr/Chapa. Addis Ababa only.', pickup_coords: `${r.from.lat},${r.from.lng}`, dropoff_coords: `${r.to.lat},${r.to.lng}`, source_url: `${BASE}/ride` });
+        quotes: q.quotes.map(x => ({ ...pubQuote(x), book_url: bookUrl(r.from, r.to, x.tier) })),
+        book_url: bookUrl(r.from, r.to),
+        note: 'Fixed price, no surge. Pay cash or telebirr/Chapa. Addis Ababa only. To book: either confirm the details with the user and call request_ride, or give the user book_url (or the chosen tier\x27s book_url): it opens bina.et/ride with this route and fare, and they confirm with their phone.', pickup_coords: `${r.from.lat},${r.from.lng}`, dropoff_coords: `${r.to.lat},${r.to.lng}`, source_url: `${BASE}/ride` });
     } catch (e) { return apiErrorToTool(e); }
   }));
 

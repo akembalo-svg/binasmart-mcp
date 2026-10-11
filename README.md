@@ -6,7 +6,8 @@ The public [Model Context Protocol](https://modelcontextprotocol.io) server for 
 
 - **Ride in Addis Ababa**: quote fixed fares, book a ride (the user confirms first), check its status, cancel it
 - **Find places**: buildings, hotels, hospitals and clinics, shops and restaurants, with their bina.et pages
-- **Jobs and tenders**: open vacancies by field or city (Amharic or English), employers, open tenders with deadlines
+- **Jobs and tenders**: open vacancies by field or city (Amharic or English), employers, open tenders with deadlines. Vacancies show as job cards in assistants that support MCP Apps
+- **Working abroad**: licensed Ethiopian overseas employment agencies and their GCC partner offices
 - **Homes and cars**: properties for sale or rent, cars for sale
 - **Guides and news**: the bilingual Digital Ethiopia guides (Fayda, passport, telebirr, tax, …) and Amharic news
 - **BinaPool**: shared commute corridors and groups
@@ -22,7 +23,8 @@ In any client that accepts a remote MCP server, add the URL `https://bina.et/mcp
 ## How it is built
 
 - `mcp-server/server.mjs`: the MCP endpoint (Express + `@modelcontextprotocol/sdk`)
-- `mcp-server/tools/`: one file per tool group (ride, directory, jobs, health, market, content, guides, knowledge)
+- `mcp-server/tools/`: one file per tool group (ride, directory, jobs, health, market, content, guides, knowledge, agencies)
+- `mcp-server/widgets/` and `mcp-server/lib/widgets.mjs`: the job-card page (MCP Apps) served as `ui://bina/jobs-v1.html`, with the `@modelcontextprotocol/ext-apps` browser bundle inlined
 - `mcp-server/lib/`: phone normalisation, an idempotency key so retries never double-book, a per-caller rate limiter, the ride API client
 - `api/` and `hotels/rules.js`: the shared usage meter, API-key check and hotel rules from the main BinaSmart app, which this server imports
 
@@ -31,6 +33,7 @@ The server runs next to the private BinaSmart application and reads its data and
 ## Safety
 
 - `request_ride` and `cancel_ride` are marked as write tools (`readOnlyHint: false`), so clients ask the user before calling them.
+- The job-card page only reads the tool result: it opens bina.et links through the host and can reach no other site.
 - Bookings are limited per phone (5 per 10 minutes) and per caller (10 per hour). Retries with the same details within 10 minutes return the same booking instead of a second one.
 - Only Ethiopian phone numbers are accepted for rides. Phone numbers are masked in logs.
 - Privacy: [bina.et/privacy](https://bina.et/privacy) · Terms: [bina.et/terms](https://bina.et/terms) · Support: [bina.et/support](https://bina.et/support)

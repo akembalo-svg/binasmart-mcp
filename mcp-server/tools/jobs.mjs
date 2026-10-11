@@ -2,6 +2,8 @@ import { z } from 'zod';
 import { toolError } from './ride.mjs';
 import { htmlToText } from '../lib/html.mjs';
 import { BASE } from './directory.mjs';
+import { registerAppTool } from '@modelcontextprotocol/ext-apps/server';
+import { JOBS_WIDGET_URI } from '../lib/widgets.mjs';
 
 // Vacancies and the companies posting them. Like tenders, this dataset is public by nature: a Job row is
 // an advert an employer published, and an Employer row is a company. No personal data passes through
@@ -15,14 +17,23 @@ import { BASE } from './directory.mjs';
 const like = s => '%' + String(s).replace(/[%_\\]/g, m => '\\' + m) + '%';
 
 // A vacancy whose deadline has passed cannot be applied for, so open ones come first and closed ones
-// only on request. deadline IS NULL means the advert never stated one - still worth showing.
+// only on request. Open means what the website shows (tenders/deadline.js; copied, because this package also ships on
+// its own): a date-only deadline closes at the END of that day in Addis (00:00 UTC + 21 h), and an advert that never
+// stated one counts as closed 90 days after it was published. Until 8 Oct 2026 this file closed every vacancy at
+// 03:00 on its closing day and kept undated ones open for ever, so assistants were handed four-month-old jobs.
+const DAY = 86_400_000;
+const closesAt = d => { const t = new Date(d).getTime(); return t % DAY === 0 ? t + DAY - 3 * 3_600_000 : t; };
+const isClosedJob = (j, now = Date.now()) => j.deadline ? closesAt(j.deadline) <= now
+  : (j.publishedAt ? new Date(j.publishedAt).getTime() < now - 90 * DAY : false);
+const OPEN_SQL = (a = '') => `((${a}deadline IS NULL AND ${a}"publishedAt" >= now() - interval '90 days')
+              OR (CASE WHEN date_trunc('day', ${a}deadline) = ${a}deadline THEN ${a}deadline + interval '21 hours' ELSE ${a}deadline END) > now())`;
 const SQL = {
   jobs: `SELECT j.slug, j.title, j."titleAm", j.city, j."jobType", j.category, j.summary, j.salary,
                 j.experience, j.education, j.vacancies, j.deadline, j."publishedAt",
                 j."sourceName", e.name AS employer, e.slug AS employer_slug, e.verified, e."logoUrl"
            FROM "Job" j JOIN "Employer" e ON e.id = j."employerId"
           WHERE j.published = true
-            AND ($1::boolean = true OR j.deadline IS NULL OR j.deadline > now())
+            AND ($1::boolean = true OR ${OPEN_SQL('j.')})
             AND ($2::text IS NULL OR j.title ILIKE $2 OR j."titleAm" LIKE $2 OR j.summary ILIKE $2 OR e.name ILIKE $2)
             AND ($3::text IS NULL OR j.category = $3)
             AND ($4::text IS NULL OR j.city ILIKE $4)
@@ -36,10 +47,10 @@ const SQL = {
          WHERE j.slug = $1 AND j.published = true`,
   categories: `SELECT category, count(*)::int AS n FROM "Job"
                 WHERE published = true AND category IS NOT NULL
-                  AND (deadline IS NULL OR deadline > now())
+                  AND ${OPEN_SQL()}
                 GROUP BY category ORDER BY n DESC`,
   cities: `SELECT city, count(*)::int AS n FROM "Job"
-            WHERE published = true AND (deadline IS NULL OR deadline > now())
+            WHERE published = true AND ${OPEN_SQL()}
             GROUP BY city ORDER BY n DESC LIMIT 15`,
   employer: `SELECT slug, name, "nameAm", sector, city, about, website, address, "locationNote",
                     verified, "logoUrl"
@@ -53,7 +64,7 @@ const SQL = {
 // A model reading a deadline needs to know how long is left without doing calendar arithmetic itself.
 function daysLeft(deadline) {
   if (!deadline) return undefined;
-  const ms = new Date(deadline).getTime() - Date.now();
+  const ms = closesAt(deadline) - Date.now();
   return ms < 0 ? 0 : Math.ceil(ms / 86_400_000);
 }
 
@@ -66,7 +77,7 @@ const jobRow = j => ({
   experience: j.experience || undefined, education: j.education || undefined,
   vacancies: j.vacancies || undefined,
   deadline: j.deadline || undefined, days_left: daysLeft(j.deadline),
-  closed: j.deadline ? new Date(j.deadline) < new Date() : undefined,
+  closed: isClosedJob(j),
   published_at: j.publishedAt,
   // Named, not linked: the board the advert came from. BinaSmart lists the vacancy; the employer owns it.
   listed_from: j.sourceName || undefined,
@@ -79,9 +90,9 @@ export function registerJobTools(server, { db, wrap, json }) {
     catch (e) { console.error('[mcp/jobs]', e.message); return toolError('BinaSmart jobs are temporarily unavailable. Try again shortly or browse https://bina.et/jobs.'); }
   };
 
-  server.registerTool('list_jobs', {
+  registerAppTool(server, 'list_jobs', {
     title: 'Job vacancies in Ethiopia',
-    description: 'Open job vacancies in Ethiopia listed on BinaSmart (bina.et/jobs): the job title, the company posting it, the city, the deadline and days left, salary and requirements where the advert states them. Thousands of vacancies from Ethiopian job boards and employers, refreshed every morning. Search by keyword in English or Amharic, and filter by field of work (banking, accounting, engineering, it, health, education, sales, ngo, logistics, admin, hospitality, construction, agriculture, legal, security, media) or by city. Open vacancies only unless include_closed is set.',
+    description: 'Open job vacancies in Ethiopia listed on BinaSmart (bina.et/jobs): the job title, the company posting it, the city, the deadline and days left, salary and requirements where the advert states them. Thousands of vacancies from Ethiopian job boards and employers, refreshed every morning. Search by keyword in English or Amharic, and filter by field of work (banking, accounting, engineering, it, health, education, sales, ngo, logistics, admin, hospitality, construction, agriculture, legal, security, media) or by city. Open vacancies only unless include_closed is set. Where the assistant shows MCP Apps, the result also appears as job cards with an apply link for each vacancy.',
     inputSchema: {
       query: z.string().max(80).optional().describe('Keyword in the job title, summary or company name — English or Amharic. Omit for the vacancies closing soonest.'),
       field: z.string().max(30).optional().describe('Field of work: banking, accounting, engineering, it, health, education, sales, ngo, logistics, admin, hospitality, construction, agriculture, legal, security, media. Use list_job_fields to see what is open now.'),
@@ -90,6 +101,8 @@ export function registerJobTools(server, { db, wrap, json }) {
       limit: z.number().int().min(1).max(50).optional().describe('Max vacancies, default 20'),
     },
     annotations: { readOnlyHint: true, openWorldHint: false },
+    // MCP Apps (2026-10-11): hosts that support it show this result as job cards (lib/widgets.mjs). The JSON is unchanged.
+    _meta: { ui: { resourceUri: JOBS_WIDGET_URI } },
   }, wrap('list_jobs', guard(async ({ query, field, city, include_closed, limit }) => {
     const { rows } = await db.query(SQL.jobs, [
       !!include_closed, query ? like(query) : null,
@@ -171,7 +184,7 @@ export function registerJobTools(server, { db, wrap, json }) {
         slug: j.slug, title: j.title, title_am: j.titleAm || undefined, city: j.city,
         job_type: j.jobType || undefined, field: j.category || undefined,
         deadline: j.deadline || undefined, days_left: daysLeft(j.deadline),
-        closed: j.deadline ? new Date(j.deadline) < new Date() : undefined,
+        closed: isClosedJob(j),
         url: `${BASE}/jobs/${j.slug}`,
       })),
       note: 'Addresses are shown only where a person checked them; where none is listed, confirm with the employer before travelling.',

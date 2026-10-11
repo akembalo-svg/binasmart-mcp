@@ -50,6 +50,13 @@ test('quote_ride returns fares without geometry/driverTake, or candidates when a
   assert.equal(r.geometry, undefined);
   assert.equal(r.distance_km, 5.2);
   assert.equal(r.source_url, 'https://bina.et/ride');
+  // a one-tap link that opens bina.et/ride with both points and the fare, for assistants that will not book themselves (9 Oct 2026)
+  const u = new URL(r.book_url);
+  assert.equal(u.origin + u.pathname, 'https://bina.et/ride');
+  assert.deepEqual([u.searchParams.get('flat'), u.searchParams.get('flng'), u.searchParams.get('lat'), u.searchParams.get('lng')].map(Number).every(Number.isFinite), true);
+  assert.equal(u.searchParams.get('tier'), null);
+  assert.equal(new URL(r.quotes[0].book_url).searchParams.get('tier'), r.quotes[0].tier);
+  assert.match(r.note, /book_url/);
   const amb = await t.quote_ride({ pickup: 'bole', dropoff: 'edna' });
   assert.equal(amb.isError, true);
   assert.match(amb.content[0].text, /Bole Medhanealem/);

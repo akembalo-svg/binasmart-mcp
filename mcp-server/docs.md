@@ -26,6 +26,13 @@ BinaSmart (bina.et) is Ethiopia's all-in-one digital platform: fixed-price ride-
 | `get_tender` | one tender in full, including the notice body | no |
 | `list_news` | recent BinaSmart news, mostly Amharic: technology, business, law, real estate | no |
 | `get_news_article` | one news article in full | no |
+| `list_jobs` | open job vacancies in Ethiopia: title, company, city, deadline and days left, salary where stated. **Shows as job cards** where the assistant supports MCP Apps | no |
+| `get_job` | one vacancy in full: duties, requirements, how to apply | no |
+| `list_job_fields` | fields of work and cities hiring now, with counts | no |
+| `get_employer` | a company and every vacancy it posted | no |
+
+## Job cards (MCP Apps)
+`list_jobs` names the widget `ui://bina/jobs-v1.html` (`text/html;profile=mcp-app`). Claude, ChatGPT and other hosts with the MCP Apps surface show the vacancies as cards: the employer, a deadline countdown, **Apply on bina.et** and **Ask about this job** (the assistant then fetches `get_job`). The widget only reads the tool result and opens bina.et links; it applies for nothing and sends nothing. Hosts without the surface get the same JSON as text.
 
 ## Connect
 - **Claude Code:** `claude mcp add --transport http binasmart https://bina.et/mcp`

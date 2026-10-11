@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BinaSmart job cards</title>
+<!--
+  MCP App for list_jobs (11 Oct 2026). The host renders this in a sandboxed iframe and hands it the tool result; the
+  JSON is exactly what list_jobs returns as text, so a host without the apps surface shows the same data as text.
+  Read-only: the buttons open bina.et (app.openLink) or ask the assistant for the full advert (get_job). Nothing here
+  applies, books or sends anything. Colours: the jobs section of the site (brand/sections.js COLOURS.jobs), with the
+  host's own surface, text and border colours when it provides them.
+-->
+<style>
+  :root {
+    --surface: var(--color-background-primary, #ffffff);
+    --card: var(--color-background-secondary, #f5f7fc);
+    --ink: var(--color-text-primary, #111a32);
+    --mut: var(--color-text-secondary, #566180);
+    --line: var(--color-border-primary, #dce3f2);
+    --acc: #1e3a8a;
+    --acc2: #2563eb;
+    --link: #1d4ed8;
+    --ok-bg: #e7efff; --ok-ink: #1e3a8a;
+    --soon-bg: #fff2d6; --soon-ink: #8a4a05;
+    --off-bg: #eceff4; --off-ink: #5b6273;
+    --radius: var(--border-radius-lg, 14px);
+    --font: var(--font-sans, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif);
+    --ethi: "Noto Sans Ethiopic", "Abyssinica SIL", "Nyala", "Ebrima", "Kefa", var(--font);
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --card: var(--color-background-secondary, #182033);
+      --ink: var(--color-text-primary, #e8ecf6);
+      --mut: var(--color-text-secondary, #a3adc4);
+      --line: var(--color-border-primary, #2b3550);
+      --link: #93b4ff;
+      --ok-bg: #1d2b52; --ok-ink: #b9ccff;
+      --soon-bg: #3b2a0c; --soon-ink: #ffcf7a;
+      --off-bg: #262c39; --off-ink: #a7aebd;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --card: var(--color-background-secondary, #182033);
+    --ink: var(--color-text-primary, #e8ecf6);
+    --mut: var(--color-text-secondary, #a3adc4);
+    --line: var(--color-border-primary, #2b3550);
+    --link: #93b4ff;
+    --ok-bg: #1d2b52; --ok-ink: #b9ccff;
+    --soon-bg: #3b2a0c; --soon-ink: #ffcf7a;
+    --off-bg: #262c39; --off-ink: #a7aebd;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: transparent; }
+  body { font: 14px/1.5 var(--font); color: var(--ink); -webkit-font-smoothing: antialiased; }
+  #root { padding: 14px 14px 12px; display: flex; flex-direction: column; gap: 12px; }
+
+  .hd { display: flex; align-items: center; gap: 11px; }
+  .mark { width: 34px; height: 34px; border-radius: 10px; flex: none; display: grid; place-items: center;
+          background: linear-gradient(135deg, var(--acc2), var(--acc)); box-shadow: 0 6px 14px -8px #1e3a8acc; }
+  .hd .t { font-weight: 700; font-size: 15px; letter-spacing: -0.005em; }
+  .hd .s { color: var(--mut); font-size: 12.5px; }
+  .hd .s button { font-size: inherit; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chips:empty { display: none; }
+  .chip { border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; font-size: 12px; color: var(--mut); }
+
+  .list { display: flex; flex-direction: column; gap: 10px; }
+  .job { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 13px 15px 12px;
+         display: flex; flex-direction: column; gap: 7px; }
+  .row1 { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+  .job h3 { margin: 0; font-size: 15px; line-height: 1.32; font-weight: 650; text-wrap: balance; overflow-wrap: anywhere; }
+  .am { font-family: var(--ethi); color: var(--mut); font-size: 13.5px; margin-top: -3px; }
+  .due { flex: none; border-radius: 999px; padding: 2px 9px; font-size: 12px; font-weight: 650; white-space: nowrap;
+         font-variant-numeric: tabular-nums; }
+  .due.ok { background: var(--ok-bg); color: var(--ok-ink); }
+  .due.soon { background: var(--soon-bg); color: var(--soon-ink); }
+  .due.off { background: var(--off-bg); color: var(--off-ink); }
+  .org { color: var(--mut); font-size: 13px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; }
+  .org .m { white-space: nowrap; }
+  .org .m::before { content: "·"; opacity: .55; margin-right: 6px; }
+  .job.shut { opacity: .78; }
+  .sum { margin: 0; font-size: 13.5px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .one .sum { -webkit-line-clamp: unset; display: block; }
+  .facts { display: flex; flex-wrap: wrap; gap: 3px 14px; font-size: 12.5px; color: var(--mut); font-variant-numeric: tabular-nums; }
+  .facts b { font-weight: 600; color: var(--ink); }
+  .act { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 3px; }
+
+  button { font: inherit; cursor: pointer; }
+  .lnk { background: none; border: 0; padding: 0; color: var(--link); font-weight: 600; text-align: left; }
+  .lnk:hover { text-decoration: underline; }
+  .pri { border: 0; border-radius: 999px; padding: 7px 15px; font-size: 13px; font-weight: 700; color: #fff;
+         background: linear-gradient(135deg, var(--acc2), var(--acc)); }
+  .pri:hover { filter: brightness(1.08); }
+  .sec { border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; font-size: 13px; font-weight: 600;
+         color: var(--ink); background: transparent; }
+  .sec:hover { border-color: var(--link); }
+  .sec[disabled] { opacity: .6; cursor: default; }
+  button:focus-visible { outline: 2px solid var(--acc2); outline-offset: 2px; }
+  .more { align-self: center; }
+
+  .ft { color: var(--mut); font-size: 12px; line-height: 1.45; border-top: 1px solid var(--line); padding-top: 10px; }
+  .ft:empty { display: none; }
+  .msg { color: var(--mut); padding: 6px 2px; }
+  .skel { height: 92px; border-radius: var(--radius); background: var(--card); border: 1px solid var(--line); animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .55; } }
+  @media (prefers-reduced-motion: reduce) { .skel { animation: none; } }
+  @media (max-width: 420px) { #root { padding: 12px 10px 10px; } .job { padding: 12px 12px 11px; } }
+</style>
+</head>
+<body>
+<div id="root">
+  <header class="hd">
+    <span class="mark" aria-hidden="true"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7.5" width="18" height="12" rx="2.5"/><path d="M8.5 7.5V6a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v1.5"/><path d="M3 12h18"/><path d="M9.6 15.4l1.6 1.6 3.2-3.2"/></svg></span>
+    <div>
+      <div class="t" id="title">Job vacancies in Ethiopia</div>
+      <div class="s" id="sub">BinaSmart · bina.et/jobs</div>
+    </div>
+  </header>
+  <div class="chips" id="chips"></div>
+  <div class="list" id="list" aria-live="polite"><div class="skel"></div><div class="skel"></div></div>
+  <button class="sec more" id="more" type="button" hidden></button>
+  <footer class="ft" id="foot"></footer>
+</div>
+<!-- The ext-apps browser bundle, inlined by lib/widgets.mjs (the iframe's CSP allows no script fetches). It gets its own
+     module scope: the minified bundle declares short top-level names ($, X, Z ...) that clash with the page's code. -->
+<script type="module">/*__EXT_APPS_BUNDLE__*/</script>
+<script type="module">
+const EXT = globalThis.ExtApps || {};
+const app = new EXT.App({ name: 'BinaSmart job cards', version: '1.0.0' }, {}, { autoResize: true });
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+const onBina = u => typeof u === 'string' && /^https:\/\/bina\.et\//.test(u);
+const FIELDS = { banking: 'Banking & Insurance', accounting: 'Accounting & Finance', it: 'IT & Software', engineering: 'Engineering',
+  health: 'Health & Medical', education: 'Education & Training', sales: 'Sales & Marketing', ngo: 'NGO & Development',
+  logistics: 'Driving & Logistics', admin: 'Admin & HR', hospitality: 'Hotel & Hospitality', construction: 'Construction & Real estate',
+  agriculture: 'Agriculture & Food', legal: 'Legal & Compliance', security: 'Security & Facilities', media: 'Media & Design' };
+const TYPES = { 'full-time': 'Full-time', 'part-time': 'Part-time', contract: 'Contract', internship: 'Internship', temporary: 'Temporary' };
+const FIRST = 6;
+let jobs = [], shown = FIRST, input = {}, source = 'https://bina.et/jobs';
+
+function applyTheme(ctx) {
+  if (!ctx) return;
+  if (ctx.theme === 'dark' || ctx.theme === 'light') document.documentElement.dataset.theme = ctx.theme;
+  try { if (ctx.styles && ctx.styles.variables && EXT.applyHostStyleVariables) EXT.applyHostStyleVariables(ctx.styles.variables); } catch {}
+  try { if (ctx.styles && ctx.styles.css && ctx.styles.css.fonts && EXT.applyHostFonts) EXT.applyHostFonts(ctx.styles.css.fonts); } catch {}
+  const i = ctx.safeAreaInsets;
+  if (i) $('root').style.padding = `${14 + (i.top || 0)}px ${14 + (i.right || 0)}px ${12 + (i.bottom || 0)}px ${14 + (i.left || 0)}px`;
+}
+
+// A date-only deadline is stored as 00:00 UTC and means "that day" (the site closes it at the end of the day in Addis).
+const DAY = 86400000;
+function deadlineText(d) {
+  if (!d) return '';
+  const t = new Date(d).getTime(); if (!isFinite(t)) return '';
+  const tz = t % DAY === 0 ? 'UTC' : 'Africa/Addis_Ababa';
+  return new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: tz });
+}
+function due(j) {
+  if (j.closed) return ['off', 'Closed'];
+  if (j.days_left == null) return ['off', 'No deadline stated'];
+  if (j.days_left <= 1) return ['soon', 'Under 24 h left'];
+  return [j.days_left <= 3 ? 'soon' : 'ok', j.days_left + ' days left'];
+}
+
+function card(j, i, one) {
+  const [cls, label] = due(j);
+  const meta = [j.city, TYPES[j.job_type] || j.job_type, FIELDS[j.field] || j.field].filter(Boolean).map(esc);
+  const facts = [
+    j.salary && `Salary <b>${esc(j.salary)}</b>`,
+    j.deadline && `Deadline <b>${esc(deadlineText(j.deadline))}</b>`,
+    one && j.experience && `Experience <b>${esc(j.experience)}</b>`,
+    one && j.education && `Education <b>${esc(j.education)}</b>`,
+    one && j.vacancies && `Posts <b>${esc(j.vacancies)}</b>`,
+    j.listed_from && `Listed from ${esc(j.listed_from)}`,
+  ].filter(Boolean);
+  return `<article class="job${one ? ' one' : ''}${j.closed ? ' shut' : ''}">
+    <div class="row1"><h3>${esc(j.title)}</h3><span class="due ${cls}">${label}</span></div>
+    ${j.title_am ? `<div class="am" lang="am">${esc(j.title_am)}</div>` : ''}
+    <div class="org">${onBina(j.employer_url) ? `<button class="lnk" type="button" data-open="${esc(j.employer_url)}">${esc(j.employer)}</button>` : `<span>${esc(j.employer)}</span>`}${meta.map(m => `<span class="m">${m}</span>`).join('')}</div>
+    ${j.summary ? `<p class="sum">${esc(j.summary)}</p>` : ''}
+    ${facts.length ? `<div class="facts">${facts.map(f => `<span>${f}</span>`).join('')}</div>` : ''}
+    <div class="act">
+      ${onBina(j.url) ? `<button class="${j.closed ? 'sec' : 'pri'}" type="button" data-open="${esc(j.url)}">${j.closed ? 'See the closed advert' : 'Apply on bina.et'} ↗</button>` : ''}
+      ${j.slug ? `<button class="sec" type="button" data-ask="${i}">Ask about this job</button>` : ''}
+    </div>
+  </article>`;
+}
+
+function render() {
+  const one = jobs.length === 1;
+  $('list').innerHTML = jobs.slice(0, one ? 1 : shown).map((j, i) => card(j, i, one)).join('');
+  const left = jobs.length - shown;
+  $('more').hidden = one || left <= 0;
+  $('more').textContent = `Show ${Math.min(left, FIRST)} more`;
+}
+
+function showChips() {
+  const c = [];
+  if (input.query) c.push(`“${esc(input.query)}”`);
+  if (input.field) c.push(esc(FIELDS[String(input.field).toLowerCase()] || input.field));
+  if (input.city) c.push(esc(input.city));
+  if (input.include_closed) c.push('including closed');
+  $('chips').innerHTML = c.map(x => `<span class="chip">${x}</span>`).join('');
+}
+
+function showError(text) {
+  $('title').textContent = 'No vacancies to show';
+  $('list').innerHTML = `<div class="msg">${esc(text || 'BinaSmart jobs are unavailable right now.')}</div>
+    <div class="act"><button class="pri" type="button" data-open="https://bina.et/jobs">Browse bina.et/jobs ↗</button></div>`;
+  $('more').hidden = true; $('foot').textContent = '';
+}
+
+app.ontoolinput = ({ arguments: args }) => { input = args || {}; showChips(); };
+app.ontoolresult = (result) => {
+  const text = (result && result.content || []).filter(c => c.type === 'text').map(c => c.text).join('\n');
+  if (!result || result.isError) return showError(text);
+  let data; try { data = JSON.parse(text); } catch { return showError(text); }
+  jobs = Array.isArray(data.jobs) ? data.jobs : []; shown = FIRST;
+  if (onBina(data.source_url)) source = data.source_url;
+  if (!jobs.length) return showError('No vacancy matched.');
+  const open = jobs.filter(j => !j.closed).length;
+  $('title').textContent = jobs.length === 1 ? (open ? '1 open vacancy' : '1 vacancy')
+    : `${jobs.length} ${open === jobs.length ? 'open vacancies' : 'vacancies'}${open && open < jobs.length ? ` (${open} open)` : ''}`;
+  $('sub').innerHTML = `BinaSmart · <button class="lnk" type="button" data-open="${esc(source)}">all vacancies on bina.et/jobs</button>`;
+  $('foot').textContent = data.note || '';
+  render();
+};
+
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.id === 'more') { shown += FIRST; return render(); }
+  if (b.dataset.open && onBina(b.dataset.open)) return void app.openLink({ url: b.dataset.open }).catch(() => {});
+  if (b.dataset.ask != null) {
+    const j = jobs[Number(b.dataset.ask)]; if (!j) return;
+    b.disabled = true; b.textContent = 'Asked ✓';
+    app.sendMessage({ role: 'user', content: [{ type: 'text',
+      text: `Tell me more about the vacancy "${j.title}" at ${j.employer} on BinaSmart (job slug: ${j.slug}).` }] }).catch(() => { b.disabled = false; b.textContent = 'Ask about this job'; });
+  }
+});
+
+app.onhostcontextchanged = applyTheme;
+try {
+  await app.connect();
+  applyTheme(app.getHostContext && app.getHostContext());
+} catch {
+  // No host answered the handshake: say where the vacancies are rather than leave grey boxes.
+  $('list').innerHTML = '<div class="msg">The vacancies are on https://bina.et/jobs</div>';
+}
+</script>
+</body>
+</html>
