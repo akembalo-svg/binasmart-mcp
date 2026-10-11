@@ -17,7 +17,7 @@ BinaSmart (bina.et) is Ethiopia's all-in-one digital platform: fixed-price ride-
 | `search_health` | hospitals, clinics, dentists, labs and doctors across Addis Ababa: by kind, sub-city, specialty or near a place (nearest first), each with its bina.et/health page and landline. Not medical advice; emergencies 907 | no |
 | `list_events` | upcoming films, concerts and events on sale, prices, seats left | no |
 | `list_films` | Amharic films to watch online: free or 48-hour rental, watch url | no |
-| `get_ethiopia_guide` | 24 step-by-step guides: Fayda, telebirr, TIN, VAT, eVisa, driving licence… | no |
+| `get_ethiopia_guide` | 25 step-by-step guides: Fayda, telebirr, TIN, VAT, eVisa, driving licence… | no |
 | `search_knowledge` | semantic search over every BinaSmart service, its rules, the guides and practical Addis Ababa knowledge; returns passages + source_url | no |
 | `list_pool_corridors` | BinaPool shared-commute corridors open now, stops, live seat-price ladder, cars filling | no |
 | `find_pool_groups` | cars filling within ~2.5 km of a point: seats left, price, women-only, share url | no |

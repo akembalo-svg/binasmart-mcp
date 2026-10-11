@@ -41,7 +41,7 @@ export function guideIndex(guides) {
 export function registerGuideTools(server, { guides, wrap, json }) {
   server.registerTool('get_ethiopia_guide', {
     title: 'Digital Ethiopia guide',
-    description: 'BinaSmart\'s bilingual (Amharic + English) step-by-step guides to Ethiopian government and banking services: Fayda ID, telebirr, CBE Birr, e-Passport, eVisa, TIN, business licence, VAT/TOT, customs, driving licence, car import, Yellow Card, bank account, birth/marriage certificate, utility bills, Labor ID and LMIS registration and the COC occupational competency certificate (Overseas Employment Proclamation 1389/2025), rental agreements, tenant screening. Call with no slug to list guides; call with a slug for the full text. The guides hold the correct official names and links — prefer them over guessing.',
+    description: 'BinaSmart\'s bilingual (Amharic + English) step-by-step guides to Ethiopian government and banking services: Fayda ID, telebirr, CBE Birr, e-Passport, eVisa, TIN, business licence, VAT/TOT, customs, driving licence, car import, Yellow Card, bank account, birth/marriage certificate, utility bills, Labor ID and LMIS registration and the COC occupational competency certificate (Overseas Employment Proclamation 1389/2025), rental agreements, tenant screening. Call with no slug to list guides; call with a slug for the full text. The guides hold the correct official names and links.',
     inputSchema: { slug: z.string().optional().describe('Guide slug from the list, e.g. tin-registration-ethiopia') },
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, wrap('get_ethiopia_guide', async ({ slug }) => {

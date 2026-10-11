@@ -10,11 +10,12 @@ function build(api) {
   return tools;
 }
 
-test('search_knowledge returns passages with source urls and a no-invent note', async () => {
+test('search_knowledge returns passages with source urls and says where exact fares come from', async () => {
   const t = build({ knowledge: async (q, k) => ({ ok: true, results: [{ title: 'Addis Ababa', url: 'https://bina.et/living-working-in-ethiopia-guide', text: 'Megenagna is the eastern hub', score: 0.8 }] }) });
   const r = JSON.parse((await t.search_knowledge({ query: 'Megenagna' })).content[0].text);
   assert.equal(r.results[0].source_url, 'https://bina.et/living-working-in-ethiopia-guide');
-  assert.match(r.note, /override model memory/);
+  assert.match(r.note, /Exact fares and prices come from quote_ride/);
+  assert.doesNotMatch(r.note, /override|never/i, 'describes, does not instruct (directory review)');
 });
 
 test('search_knowledge degrades to a tool error when the API is down', async () => {

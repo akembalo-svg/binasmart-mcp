@@ -79,7 +79,7 @@ export function registerContentTools(server, { db, wrap, json }) {
       category: z.string().max(40).optional().describe('Category filter, matched loosely: Supply / አቅርቦት, Construction / ግንባታ, Consultancy / ማማከር, Services / አገልግሎት, Transport / ትራንስፖርት, Disposal auction / ሽያጭ ጨረታ. Use list_tender_categories to see what is open now.'),
       include_closed: z.boolean().optional().describe('Include tenders whose deadline has passed (default false)'),
       limit: z.number().int().min(1).max(50).optional().describe('Max tenders, default 20'),
-      newest: z.boolean().optional().describe('Newest published first, for "new", "latest", "today" or "this week" (default: closing soonest first). Each tender has published_at: never call one new unless that date says so.'),
+      newest: z.boolean().optional().describe('Newest published first, for "new", "latest", "today" or "this week" (default: closing soonest first). Each tender has published_at, the date that shows whether it is new.'),
     },
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, wrap('list_tenders', guard(async ({ query, category, include_closed, limit, newest }) => {

@@ -34,6 +34,7 @@ The server runs next to the private BinaSmart application and reads its data and
 
 - `request_ride` and `cancel_ride` are marked as write tools (`readOnlyHint: false`), so clients ask the user before calling them.
 - The job-card page only reads the tool result: it opens bina.et links through the host and can reach no other site.
+- Reviewers can test `request_ride` with the reserved number `0900000099`: it returns a clearly marked test booking and no driver is sent.
 - Bookings are limited per phone (5 per 10 minutes) and per caller (10 per hour). Retries with the same details within 10 minutes return the same booking instead of a second one.
 - Only Ethiopian phone numbers are accepted for rides. Phone numbers are masked in logs.
 - Privacy: [bina.et/privacy](https://bina.et/privacy) · Terms: [bina.et/terms](https://bina.et/terms) · Support: [bina.et/support](https://bina.et/support)

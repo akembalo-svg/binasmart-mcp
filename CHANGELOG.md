@@ -3,6 +3,13 @@
 All notable changes to the BinaSmart MCP server (`https://bina.et/mcp`, registry name `et.bina/binasmart`).
 Versions follow [Semantic Versioning](https://semver.org): a new tool or parameter is a minor version, a fix or a clearer description is a patch.
 
+## [1.3.1] - 2026-10-11
+### Changed
+- Every tool now carries a `title` and a `readOnlyHint` (25 read-only tools) or write annotation (`request_ride`; `cancel_ride` is also `destructiveHint`): `search_knowledge`, `list_pool_corridors` and `find_pool_groups` had none.
+- Tool descriptions and the server instructions describe what each tool does instead of telling the assistant how to behave, and the instructions now name the job tools and `list_films`. The guide count is 25.
+### Added
+- A reserved reviewer number for directory reviews: `request_ride` with `0900000099` (+251900000099) resolves the real route and fixed fare, then returns a `TEST-` booking marked `test: true` that never reaches the dispatcher or a driver; `get_ride_status` and `cancel_ride` answer for that test ride without calling the ride service. Every other number books exactly as before.
+
 ## [1.3.0] - 2026-10-11
 ### Added
 - Job cards (MCP Apps): `list_jobs` names the widget `ui://bina/jobs-v1.html` (`text/html;profile=mcp-app`). Hosts with the MCP Apps surface (Claude, ChatGPT) show the vacancies as cards: employer, city, field, a deadline countdown, salary where stated, **Apply on bina.et** (opened through the host) and **Ask about this job** (the assistant then calls `get_job`). Read-only; the page reaches no outside origin. The tool's JSON is unchanged, so other hosts get the same text. Built on `@modelcontextprotocol/ext-apps` 1.7.5, whose browser bundle is inlined into the page.

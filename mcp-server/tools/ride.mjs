@@ -70,10 +70,17 @@ function pubRide(r) {
 const placeDesc = which => `${which}: a place name in Addis Ababa (e.g. "Edna Mall", "Bole Airport", "Piassa") or "lat,lng" like "9.0108,38.7578".`;
 const PHONE_MSG = 'rider_phone must be an Ethiopian mobile number: 09XXXXXXXX or +2519XXXXXXXX (10 digits after +251). Ask the user for it.';
 
+// Directory reviewers (Claude, ChatGPT) run every tool, request_ride included. Their bookings use this reserved number, from
+// the +2519000000xx block the tests use and never a real phone: the route and the fare are worked out for real, but nothing
+// reaches the dispatcher queue, the owner's Telegram or a driver, and every answer says so. 2026-10-11
+export const REVIEW_PHONE = '+251900000099';
+const isReview = p => normPhone(p) === REVIEW_PHONE;
+const TEST_NOTE = 'Reviewer test number: nothing was sent to a dispatcher or a driver. A real booking returns a ride id, a dispatcher calls the rider, and the tracking link shows the driver.';
+
 export function registerRideTools(server, { api, wrap, json }) {
   server.registerTool('quote_ride', {
     title: 'Quote a BinaSmart ride',
-    description: 'Fixed upfront price for a ride inside Addis Ababa, Ethiopia — no surge, cash or telebirr/Chapa. Returns distance, ETA and the fare for every vehicle tier (moto, bajaj, economy, comfort, XL). Call this before request_ride and read the fare to the user. Also returns book_url: a one-tap bina.et link with this route and fare for the user to confirm.',
+    description: 'Fixed upfront price for a ride inside Addis Ababa, Ethiopia — no surge, cash or telebirr/Chapa. Returns distance, ETA and the fare for every vehicle tier (moto, bajaj, economy, comfort, XL). request_ride books at the fare this returns. Also returns book_url: a one-tap bina.et link with this route and fare for the user to confirm.',
     inputSchema: { pickup: z.string().min(2).max(120).describe(placeDesc('Pickup')), dropoff: z.string().min(2).max(120).describe(placeDesc('Drop-off')) },
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, wrap('quote_ride', async ({ pickup, dropoff }) => {
@@ -89,7 +96,7 @@ export function registerRideTools(server, { api, wrap, json }) {
 
   server.registerTool('request_ride', {
     title: 'Book a BinaSmart ride',
-    description: 'Books a ride in Addis Ababa at the fixed fare from quote_ride. ALWAYS confirm pickup, drop-off, tier, fare and the rider\'s Ethiopian phone number with the user before calling. A dispatcher assigns a driver; the rider is contacted on the phone given. Returns the ride id and a live tracking link. To book for someone else (e.g. a relative in Addis while you are abroad), pass passenger_name and passenger_phone; rider_name/rider_phone are then the booker and may be a foreign number.',
+    description: 'Books a ride in Addis Ababa at the fixed fare from quote_ride. It sends a real driver, so it takes the pickup, drop-off, tier, fare and the rider\'s Ethiopian phone number as the user confirmed them. A dispatcher assigns a driver; the rider is contacted on the phone given. Returns the ride id and a live tracking link. To book for someone else (e.g. a relative in Addis while you are abroad), pass passenger_name and passenger_phone; rider_name/rider_phone are then the booker and may be a foreign number.',
     inputSchema: {
       tier: z.enum(TIERS).describe('Vehicle tier from quote_ride'),
       pickup: z.string().min(2).max(120).describe(placeDesc('Pickup') + ' Prefer the pickup_coords from quote_ride.'),
@@ -108,6 +115,13 @@ export function registerRideTools(server, { api, wrap, json }) {
     if (!phone) return toolError(PHONE_MSG + ' If the booker is abroad, use passenger_name and passenger_phone for the person riding.');
     try {
       const r = await resolveBoth(api, pickup, dropoff); if (r.err) return r.err;
+      if (isReview(rider_phone) || (passenger && isReview(passenger.phone))) {
+        const q = await api.quote(r.from, r.to);
+        const t = (q.quotes || []).find(x => x.tier === tier);
+        return json({ test: true, ride_id: 'TEST-' + Date.now().toString(36).toUpperCase(), status: 'test_booking', tier, fare_etb: t ? t.fareEtb : undefined,
+          payment_method: payment_method || 'cash', pickup: r.from.label, dropoff: r.to.label, booked_for: passenger ? passenger.name : undefined,
+          note: TEST_NOTE, source_url: `${BASE}/ride` });
+      }
       const res = await api.request({ tier, pickup: r.from, dropoff: r.to, riderName: String(rider_name).trim(), riderPhone: phone, paymentMethod: payment_method || 'cash', idemKey: idemKey(passenger ? passenger.phone : phone, r.from, r.to), ...(passenger ? { passenger } : {}) });
       const ride = pubRide(res.ride);
       return json({ ...ride, duplicate: !!res.duplicate, booked_for: passenger ? passenger.name : undefined,
@@ -124,6 +138,7 @@ export function registerRideTools(server, { api, wrap, json }) {
   }, wrap('get_ride_status', async ({ ride_id, rider_phone }) => {
     const phone = normPhone(rider_phone);
     if (!phone) return toolError(PHONE_MSG);
+    if (isReview(phone) && /^TEST-/.test(ride_id)) return json({ test: true, ride_id, status: 'test_booking', note: TEST_NOTE, source_url: `${BASE}/ride` });
     try { const res = await api.status(ride_id, phone); return json({ ...pubRide(res.ride), source_url: `${BASE}/ride?id=${ride_id}` }); }
     catch (e) { return apiErrorToTool(e, ride_id); }
   }));
@@ -136,6 +151,7 @@ export function registerRideTools(server, { api, wrap, json }) {
   }, wrap('cancel_ride', async ({ ride_id, rider_phone }) => {
     const phone = normPhone(rider_phone);
     if (!phone) return toolError(PHONE_MSG);
+    if (isReview(phone) && /^TEST-/.test(ride_id)) return json({ test: true, ride_id, status: 'cancelled', note: 'Reviewer test booking cancelled. Nothing had been sent to a dispatcher or a driver.', source_url: `${BASE}/ride` });
     try { const res = await api.cancel(ride_id, phone); return json({ ...pubRide(res.ride), source_url: `${BASE}/ride` }); }
     catch (e) { return apiErrorToTool(e, ride_id); }
   }));

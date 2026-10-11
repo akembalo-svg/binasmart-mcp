@@ -36,13 +36,14 @@ const INSTRUCTIONS =
   'their bina.et/health pages (search_health; not medical advice, emergencies 907), homes for sale and rent (search_properties), cars for sale ' +
   '(search_cars), hotels and guest houses (search_hotels), upcoming events (list_events), open Ethiopian tender ' +
   'notices with deadlines (list_tenders, list_tender_categories, get_tender), Amharic news (list_news, ' +
-  'get_news_article), 24 bilingual Digital ' +
-  'Ethiopia guides (get_ethiopia_guide), licensed Ethiopian overseas employment agencies with their GCC partner offices (list_overseas_agencies), BinaPool shared commute (list_pool_corridors, find_pool_groups) and a knowledge ' +
-  'base about every BinaSmart service and practical Addis Ababa life (search_knowledge — call it first for any question ' +
-  'about BinaSmart, Ethiopian paperwork or getting around Addis). Before request_ride ALWAYS confirm pickup, drop-off, tier, ' +
-  'fare and the rider\'s Ethiopian phone with the user. If you cannot or should not book, give the user the book_url from ' +
-  'quote_ride: it opens bina.et/ride with that route and fixed fare, and they confirm it themselves. Never invent fares or official portal names — quote_ride, the pool ' +
-  'board and the guides hold them. Cite source_url in answers. Site guide: https://bina.et/llms.txt';
+  'get_news_article), 25 bilingual Digital ' +
+  'Ethiopia guides (get_ethiopia_guide), licensed Ethiopian overseas employment agencies with their GCC partner offices (list_overseas_agencies), BinaPool shared commute (list_pool_corridors, find_pool_groups), job ' +
+  'vacancies and the companies posting them (list_jobs, get_job, list_job_fields, get_employer), Amharic films (list_films) and a knowledge ' +
+  'base about every BinaSmart service, Ethiopian paperwork and practical Addis Ababa life (search_knowledge). ' +
+  'request_ride sends a real driver, so it takes the pickup, drop-off, tier, fare and Ethiopian phone as the user confirmed them; ' +
+  'quote_ride also returns book_url, which opens bina.et/ride with that route and fixed fare for the user to confirm themselves. Fares ' +
+  'come from quote_ride and the pool board, official portal names and links from the guides, and every result carries its source_url. ' +
+  'Site guide: https://bina.et/llms.txt';
 
 export function json(data) { return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] }; }
 
