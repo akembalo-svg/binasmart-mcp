@@ -145,7 +145,7 @@ export function registerRideTools(server, { api, wrap, json }) {
 
   server.registerTool('cancel_ride', {
     title: 'Cancel a ride',
-    description: 'Cancels a BinaSmart ride that has not started yet. Confirm with the user first. Needs the ride id and the rider phone used to book.',
+    description: 'Cancels a BinaSmart ride that has not started yet. A cancellation cannot be undone. Needs the ride id and the rider phone used to book.',
     inputSchema: { ride_id: z.string().min(5).max(40), rider_phone: z.string().min(9).max(20) },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
   }, wrap('cancel_ride', async ({ ride_id, rider_phone }) => {

@@ -16,7 +16,7 @@ const RO = { readOnlyHint: true, openWorldHint: false };
 export function registerMarketTools(server, { wrap, json }) {
   server.registerTool('search_properties', {
     title: 'Homes, land and shops for sale or rent in Addis Ababa',
-    description: 'Live listings on bina.et/property from Addis Ababa real-estate companies\' own websites, checked every week: title, price as the company wrote it (some per m² or in USD), bedrooms, size, area, the listing company with its own phone and WhatsApp, the date the company last updated it, and a bina.et link with every photo. Use for "apartment for rent in Bole", "3 bedroom for sale", "ቤት ኪራይ". Never invent a listing or a price.',
+    description: 'Live listings on bina.et/property from Addis Ababa real-estate companies\' own websites, checked every week: title, price as the company wrote it (some per m² or in USD), bedrooms, size, area, the listing company with its own phone and WhatsApp, the date the company last updated it, and a bina.et link with every photo. Use for "apartment for rent in Bole", "3 bedroom for sale", "ቤት ኪራይ". Every listing and price is as the company published it.',
     inputSchema: {
       listing: z.enum(['sale', 'rent']).optional().describe('Buy (sale) or rent'),
       type: z.enum(['Apartment', 'Condominium', 'House / Villa', 'Land', 'Commercial', 'Building']).optional(),
@@ -36,7 +36,7 @@ export function registerMarketTools(server, { wrap, json }) {
 
   server.registerTool('search_cars', {
     title: 'Cars for sale in Addis Ababa',
-    description: 'Live new and used cars on bina.et/cars from Addis Ababa dealers\' and car markets\' own websites, checked every week: make, model, year, price, mileage, fuel, gearbox, the dealer with its own phone and WhatsApp, and a bina.et link with every photo. Use for "used Toyota", "SUV under 10 million birr", "electric car price", "BYD". Not for taxi rides.',
+    description: 'Live new and used cars on bina.et/cars from Addis Ababa dealers\' and car markets\' own websites, checked every week: make, model, year, price, mileage, fuel, gearbox, the dealer with its own phone and WhatsApp, and a bina.et link with every photo. Use for "used Toyota", "SUV under 10 million birr", "electric car price", "BYD". Not for taxi rides. Source: the BinaSmart car listings at https://bina.et/cars.',
     inputSchema: {
       make: z.string().max(30).optional().describe('Brand, e.g. Toyota, Suzuki, BYD, Hyundai, Ford'),
       model: z.string().max(40).optional(),
@@ -58,7 +58,7 @@ export function registerMarketTools(server, { wrap, json }) {
 
   server.registerTool('search_hotels', {
     title: 'Hotels and guest houses in Addis Ababa',
-    description: 'Hotels, guest houses, pensions, hostels and furnished apartments in Addis Ababa from BinaSmart\'s directory (1,000+ places from the city map): name, type, sub-city, stars, the hotel\'s own office phone and website, and its bina.et page. It has NO prices or free rooms - tell the guest to call the hotel. Not for hospitals or clinics (use search_health) or for shops, restaurants and other buildings (use search_places).',
+    description: 'Hotels, guest houses, pensions, hostels and furnished apartments in Addis Ababa from BinaSmart\'s directory (1,000+ places from the city map): name, type, sub-city, stars, the hotel\'s own office phone and website, and its bina.et page. It has no prices or room availability: those come from the hotel, whose phone is included. Not for hospitals or clinics (use search_health) or for shops, restaurants and other buildings (use search_places).',
     inputSchema: {
       area: z.string().max(40).optional().describe('Sub-city or area in English or Amharic, e.g. Bole, Kirkos, Arada, ቦሌ'),
       kind: z.enum(['hotel', 'guest_house', 'hostel', 'motel', 'apartment']).optional().describe('hotel; guest_house (also pensions, ፔንስዮን, መኝታ); hostel; motel; apartment (furnished apartments and suites)'),

@@ -50,6 +50,10 @@ export function json(data) { return { content: [{ type: 'text', text: JSON.strin
 // One McpServer per request (stateless). `callerKey` feeds the per-caller limiters.
 export function buildServer({ rideApi, db, guides, callerKey, callsRL, bookRL }) {
   const server = new McpServer({ name: 'binasmart', version: VERSION }, { instructions: INSTRUCTIONS });
+  // The Claude directory reads a tool's display name from annotations.title (MCP ToolAnnotations), not only from the tool's
+  // title: every tool, registerAppTool ones included, gets both from the one title it is registered with. 2026-10-11
+  const register = server.registerTool.bind(server);
+  server.registerTool = (name, config, cb) => register(name, { ...config, annotations: { title: config.title, ...(config.annotations || {}) } }, cb);
   const wrap = (name, fn) => async (args) => {
     if (!callsRL(callerKey)) return toolError('Slow down — too many tool calls from this session. Wait a minute and try again.');
     if (name === 'request_ride' && !bookRL(callerKey)) return toolError('Slow down — this session has booked too many rides this hour.');

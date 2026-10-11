@@ -3,6 +3,12 @@
 All notable changes to the BinaSmart MCP server (`https://bina.et/mcp`, registry name `et.bina/binasmart`).
 Versions follow [Semantic Versioning](https://semver.org): a new tool or parameter is a minor version, a fix or a clearer description is a patch.
 
+## [1.3.2] - 2026-10-11
+### Changed
+- Every tool also carries its title in `annotations.title` (MCP ToolAnnotations), which the Claude directory reads; the server copies each tool's title there, so new tools get it too.
+- `search_cars` names its source (the BinaSmart car listings at https://bina.et/cars).
+- `cancel_ride`, `search_properties` and `search_hotels` describe what they do instead of telling the assistant what to do.
+
 ## [1.3.1] - 2026-10-11
 ### Changed
 - Every tool now carries a `title` and a `readOnlyHint` (25 read-only tools) or write annotation (`request_ride`; `cancel_ride` is also `destructiveHint`): `search_knowledge`, `list_pool_corridors` and `find_pool_groups` had none.

@@ -1,6 +1,6 @@
 {
   "name": "binasmart-mcp",
-  "version": "1.3.1",
+  "version": "1.3.2",
   "private": true,
   "type": "module",
   "description": "Public MCP server for BinaSmart (bina.et): quote and book rides in Addis Ababa, search the building/shop directory, read the Digital Ethiopia guides.",
