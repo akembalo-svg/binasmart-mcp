@@ -16,6 +16,10 @@ The public [Model Context Protocol](https://modelcontextprotocol.io) server for 
 **Registry:** `et.bina/binasmart` on the [MCP Registry](https://registry.modelcontextprotocol.io)
 **Docs:** `GET https://bina.et/mcp` · health: `https://bina.et/mcp/health`
 
+## Claude plugin
+
+The [`plugin/`](plugin/) folder is a Claude plugin: the same MCP server plus five skills that show Claude how to use it for rides, jobs, paperwork, places and tenders. It contains no code, only Markdown skills and one MCP server entry.
+
 ## Connect
 
 In any client that accepts a remote MCP server, add the URL `https://bina.et/mcp`. For example, in Claude: *Settings → Connectors → Add custom connector*.

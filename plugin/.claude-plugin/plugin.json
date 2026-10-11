@@ -1,0 +1,14 @@
+{
+  "name": "binasmart",
+  "displayName": "BinaSmart",
+  "version": "1.0.0",
+  "description": "Ethiopia with BinaSmart: fixed-fare rides in Addis Ababa, job vacancies and how to apply safely, step-by-step government guides, hotels, health facilities, homes, cars and open tenders. Uses the BinaSmart MCP server at https://bina.et/mcp.",
+  "author": {
+    "name": "BinaSmart",
+    "url": "https://bina.et"
+  },
+  "homepage": "https://bina.et/ai",
+  "repository": "https://github.com/akembalo-svg/binasmart-mcp",
+  "license": "MIT",
+  "keywords": ["ethiopia", "addis-ababa", "ride-hailing", "jobs", "tenders", "government-services", "amharic"]
+}

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "binasmart": {
+      "type": "http",
+      "url": "https://bina.et/mcp"
+    }
+  }
+}
