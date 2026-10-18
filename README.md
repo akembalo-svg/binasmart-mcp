@@ -43,6 +43,10 @@ The server runs next to the private BinaSmart application and reads its data and
 - Only Ethiopian phone numbers are accepted for rides. Phone numbers are masked in logs.
 - Privacy: [bina.et/privacy](https://bina.et/privacy) · Terms: [bina.et/terms](https://bina.et/terms) · Support: [bina.et/support](https://bina.et/support)
 
+## Standalone (tool definitions only)
+
+`node mcp-server/stdio.mjs` starts the same tools over stdio without the BinaSmart database or `.env`, so MCP directories such as Glama can build it in their own container and read the tool definitions. Calls that need live data return an error pointing to `https://bina.et/mcp`.
+
 ## Tests
 
 ```bash
