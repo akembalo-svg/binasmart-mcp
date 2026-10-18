@@ -20,6 +20,7 @@ import { registerMarketTools } from './tools/market.mjs';
 import { registerHealthTools } from './tools/health.mjs';
 import { registerAgencyTools } from './tools/agencies.mjs';
 import { registerWidgets } from './lib/widgets.mjs';
+import { OUTPUTS } from './lib/outputs.mjs';
 
 const { makeGate } = apiGate;
 const { makeKeystore } = apiKeystore;
@@ -45,7 +46,32 @@ const INSTRUCTIONS =
   'come from quote_ride and the pool board, official portal names and links from the guides, and every result carries its source_url. ' +
   'Site guide: https://bina.et/llms.txt';
 
-export function json(data) { return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] }; }
+// structuredContent is the same object as the text, round-tripped through JSON (dates become strings, undefined
+// fields drop), so it always matches what the text says and the tool's outputSchema in lib/outputs.mjs.
+export function json(data) {
+  const text = JSON.stringify(data, null, 2);
+  const r = { content: [{ type: 'text', text }] };
+  if (data && typeof data === 'object' && !Array.isArray(data)) r.structuredContent = JSON.parse(text);
+  return r;
+}
+
+// Safety net for the output schemas: if a result ever has a field of an unexpected type, log it and drop just that
+// field from structuredContent (the text keeps everything), instead of letting the SDK reject the whole call.
+export function fitOutput(name, r) {
+  const schema = OUTPUTS[name];
+  if (!schema || !r || r.isError || !r.structuredContent) return r;
+  for (let i = 0; i < 5; i++) {
+    const v = schema.safeParse(r.structuredContent);
+    if (v.success) return r;
+    console.error(JSON.stringify({ t: 'output_mismatch', name, issues: v.error.issues.slice(0, 5).map(x => ({ path: x.path.join('.'), msg: x.message })) }));
+    for (const issue of v.error.issues) {
+      const path = issue.path; let o = r.structuredContent;
+      for (const k of path.slice(0, -1)) { if (o == null || typeof o !== 'object') { o = null; break; } o = o[k]; }
+      if (o && typeof o === 'object' && path.length) { if (Array.isArray(o)) o[path[path.length - 1]] = {}; else delete o[path[path.length - 1]]; }
+    }
+  }
+  return r;
+}
 
 // One McpServer per request (stateless). `callerKey` feeds the per-caller limiters.
 export function buildServer({ rideApi, db, guides, callerKey, callsRL, bookRL }) {
@@ -53,12 +79,12 @@ export function buildServer({ rideApi, db, guides, callerKey, callsRL, bookRL })
   // The Claude directory reads a tool's display name from annotations.title (MCP ToolAnnotations), not only from the tool's
   // title: every tool, registerAppTool ones included, gets both from the one title it is registered with. 2026-10-11
   const register = server.registerTool.bind(server);
-  server.registerTool = (name, config, cb) => register(name, { ...config, annotations: { title: config.title, ...(config.annotations || {}) } }, cb);
+  server.registerTool = (name, config, cb) => register(name, { ...config, outputSchema: config.outputSchema || OUTPUTS[name], annotations: { title: config.title, ...(config.annotations || {}) } }, cb);
   const wrap = (name, fn) => async (args) => {
     if (!callsRL(callerKey)) return toolError('Slow down — too many tool calls from this session. Wait a minute and try again.');
     if (name === 'request_ride' && !bookRL(callerKey)) return toolError('Slow down — this session has booked too many rides this hour.');
     const t0 = Date.now(); let ok = true;
-    try { const r = await fn(args); ok = !r.isError; return r; }
+    try { const r = await fn(args); ok = !r.isError; return fitOutput(name, r); }
     catch (e) { ok = false; console.error(`[mcp] ${name} threw:`, e && e.message); return toolError('Internal error in BinaSmart MCP. Try again or use https://bina.et.'); }
     finally { console.log(JSON.stringify({ t: 'tool', name, ms: Date.now() - t0, ok, caller: String(callerKey).slice(0, 24) })); }
   };
