@@ -7,7 +7,7 @@ export function registerAgencyTools(server, { wrap, json, fetchImpl = fetch }) {
   server.registerTool('list_overseas_agencies', {
     title: 'Licensed Ethiopian overseas employment agencies',
     description: 'Ethiopian agencies that send domestic workers to GCC countries, approved on BinaSmart/GCC Domestic: name, licence, whether it is in the Ministry of Labor and Skills register, and for each country its GCC partner office (the office families contact). Filter by country: UAE, KSA, Qatar, Kuwait, Bahrain, Oman. Recruitment is through LMIS only (Proclamation 1389/2025).',
-    inputSchema: { country: z.enum(['UAE', 'KSA', 'Qatar', 'Kuwait', 'Bahrain', 'Oman']).optional() },
+    inputSchema: { country: z.enum(['UAE', 'KSA', 'Qatar', 'Kuwait', 'Bahrain', 'Oman']).optional().describe('GCC destination country; omit for all') },
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, wrap('list_overseas_agencies', async ({ country }) => {
     try {

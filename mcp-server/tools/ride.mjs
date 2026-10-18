@@ -133,7 +133,7 @@ export function registerRideTools(server, { api, wrap, json }) {
   server.registerTool('get_ride_status', {
     title: 'Ride status',
     description: 'Current status of a BinaSmart ride (dispatching, assigned, arriving, arrived, ontrip, completed, cancelled) with driver name, vehicle and plate once assigned. Needs the ride id and the rider phone used to book.',
-    inputSchema: { ride_id: z.string().min(5).max(40), rider_phone: z.string().min(9).max(20) },
+    inputSchema: { ride_id: z.string().min(5).max(40).describe('Ride id returned by request_ride'), rider_phone: z.string().min(9).max(20).describe('Ethiopian phone number used to book the ride, e.g. 0911234567 or +251911234567') },
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, wrap('get_ride_status', async ({ ride_id, rider_phone }) => {
     const phone = normPhone(rider_phone);
@@ -146,7 +146,7 @@ export function registerRideTools(server, { api, wrap, json }) {
   server.registerTool('cancel_ride', {
     title: 'Cancel a ride',
     description: 'Cancels a BinaSmart ride that has not started yet. A cancellation cannot be undone. Needs the ride id and the rider phone used to book.',
-    inputSchema: { ride_id: z.string().min(5).max(40), rider_phone: z.string().min(9).max(20) },
+    inputSchema: { ride_id: z.string().min(5).max(40).describe('Ride id returned by request_ride'), rider_phone: z.string().min(9).max(20).describe('Ethiopian phone number used to book the ride, e.g. 0911234567 or +251911234567') },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
   }, wrap('cancel_ride', async ({ ride_id, rider_phone }) => {
     const phone = normPhone(rider_phone);
