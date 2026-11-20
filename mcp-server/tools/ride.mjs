@@ -52,7 +52,18 @@ async function resolveBoth(api, pickup, dropoff) {
   return { from: a.point, to: b.point };
 }
 
-function pubQuote(q) { return { tier: q.tier, label: q.label, label_am: q.labelAm, seats: q.seats, fare_etb: q.fareEtb, eta_min: q.etaMin }; }
+function pubQuote(q) {
+  const o = { tier: q.tier, label: q.label, label_am: q.labelAm, seats: q.seats, fare_etb: q.fareEtb, eta_min: q.etaMin };
+  if (typeof q.driversNear === 'number') o.drivers_near = q.driversNear;   // 17 Nov 2026: drivers who could come now
+  return o;
+}
+// 17 Nov 2026: with no driver near, request_ride is refused (409 no_driver_near). Say it in the quote so the
+// assistant tells the user before asking for a name and phone.
+const NO_DRIVER_NOTE = 'No driver is free near the pickup right now (drivers_near is 0 for every tier): tell the user this before booking; request_ride would be refused. They can try again later. ';
+function driversAvailable(quotes) {
+  const known = quotes.filter(x => typeof x.driversNear === 'number');
+  return known.length ? known.some(x => x.driversNear > 0) : undefined;
+}
 // One-tap link to bina.et/ride with both points pinned (and the tier, if given): the rider sees the same fixed fare and
 // confirms with their own phone. For assistants that will not, or may not, call request_ride themselves (9 Oct 2026).
 function bookUrl(from, to, tier) {
@@ -89,8 +100,8 @@ export function registerRideTools(server, { api, wrap, json }) {
       const q = await api.quote(r.from, r.to);
       return json({ pickup: r.from.label, dropoff: r.to.label, distance_km: Math.round(q.distanceM / 100) / 10, eta_min: Math.round(q.durationS / 60), estimate: !!q.estimate,
         quotes: q.quotes.map(x => ({ ...pubQuote(x), book_url: bookUrl(r.from, r.to, x.tier) })),
-        book_url: bookUrl(r.from, r.to),
-        note: 'Fixed price, no surge. Pay cash or telebirr/Chapa. Addis Ababa only. To book: either confirm the details with the user and call request_ride, or give the user book_url (or the chosen tier\x27s book_url): it opens bina.et/ride with this route and fare, and they confirm with their phone.', pickup_coords: `${r.from.lat},${r.from.lng}`, dropoff_coords: `${r.to.lat},${r.to.lng}`, source_url: `${BASE}/ride` });
+        book_url: bookUrl(r.from, r.to), drivers_available: driversAvailable(q.quotes),
+        note: (driversAvailable(q.quotes) === false ? NO_DRIVER_NOTE : '') + 'Fixed price, no surge. Pay cash or telebirr/Chapa. Addis Ababa only. To book: either confirm the details with the user and call request_ride, or give the user book_url (or the chosen tier\x27s book_url): it opens bina.et/ride with this route and fare, and they confirm with their phone.', pickup_coords: `${r.from.lat},${r.from.lng}`, dropoff_coords: `${r.to.lat},${r.to.lng}`, source_url: `${BASE}/ride` });
     } catch (e) { return apiErrorToTool(e); }
   }));
 
@@ -133,7 +144,7 @@ export function registerRideTools(server, { api, wrap, json }) {
   server.registerTool('get_ride_status', {
     title: 'Ride status',
     description: 'Current status of a BinaSmart ride (dispatching, assigned, arriving, arrived, ontrip, completed, cancelled) with driver name, vehicle and plate once assigned. Needs the ride id and the rider phone used to book.',
-    inputSchema: { ride_id: z.string().min(5).max(40).describe('Ride id returned by request_ride'), rider_phone: z.string().min(9).max(20).describe('Ethiopian phone number used to book the ride, e.g. 0911234567 or +251911234567') },
+    inputSchema: { ride_id: z.string().min(5).max(40).describe('Ride id returned by request_ride'), rider_phone: z.string().min(9).max(20).describe('Ethiopian phone number used to book the ride, in the form 09xxxxxxxx or +2519xxxxxxxx') },
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, wrap('get_ride_status', async ({ ride_id, rider_phone }) => {
     const phone = normPhone(rider_phone);
@@ -146,7 +157,7 @@ export function registerRideTools(server, { api, wrap, json }) {
   server.registerTool('cancel_ride', {
     title: 'Cancel a ride',
     description: 'Cancels a BinaSmart ride that has not started yet. A cancellation cannot be undone. Needs the ride id and the rider phone used to book.',
-    inputSchema: { ride_id: z.string().min(5).max(40).describe('Ride id returned by request_ride'), rider_phone: z.string().min(9).max(20).describe('Ethiopian phone number used to book the ride, e.g. 0911234567 or +251911234567') },
+    inputSchema: { ride_id: z.string().min(5).max(40).describe('Ride id returned by request_ride'), rider_phone: z.string().min(9).max(20).describe('Ethiopian phone number used to book the ride, in the form 09xxxxxxxx or +2519xxxxxxxx') },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
   }, wrap('cancel_ride', async ({ ride_id, rider_phone }) => {
     const phone = normPhone(rider_phone);

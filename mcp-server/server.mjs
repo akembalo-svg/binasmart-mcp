@@ -19,10 +19,35 @@ import { registerJobTools } from './tools/jobs.mjs';
 import { registerMarketTools } from './tools/market.mjs';
 import { registerHealthTools } from './tools/health.mjs';
 import { registerAgencyTools } from './tools/agencies.mjs';
+import { registerServiceTools } from './tools/services.mjs';
 import { registerWidgets } from './lib/widgets.mjs';
 import { OUTPUTS } from './lib/outputs.mjs';
+import { makeA2AHandler, rpcError } from './lib/a2a.mjs';
+import { makeBusinessAgents } from './lib/a2a-business.mjs';
+import { makeHealthAgents, makeHotelAgents } from './lib/a2a-places.mjs';
+import { makeRequestDesk } from './lib/a2a-requests.mjs';
+import evalGate from '../api/evalGate.js';
 
 const { makeGate } = apiGate;
+// A2A requests (lib/a2a-requests.mjs) tell the BinaSmart admin chats, with the same bot and chats binasmart-api's
+// notifyAdmins uses. Link previews off: Telegram must not open the Approve link by itself.
+// The refusal below lives in the sender, not in how the suite is started: test/_live-guard.cjs is loaded
+// only by `npm test` (--require), so `node --test mcp-server/test/...` - the obvious way to iterate on
+// these tests - reaches this function with the real bot token sitting in .env, and the catch below would
+// swallow the evidence. Node's own runner always sets NODE_TEST_CONTEXT whichever way it was started, so
+// it is checked here. A test that needs a send injects sendAdmin (test/a2a-requests.test.mjs does).
+// Exported so the refusal is itself tested.
+export async function adminTelegram(text) {
+  if (process.env.NODE_TEST_CONTEXT) throw new Error('blocked in tests: adminTelegram would reach the live admin chat - inject sendAdmin instead');
+  const token = envValue('BINA_RIDER_BOT_TOKEN') || envValue('BINASMART_TG_TOKEN');
+  const chats = [...new Set([envValue('BINASMART_ADMIN_TG_CHAT'), envValue('BINASMART_OPS_TG_CHAT') || '8096525984'].filter(Boolean))];
+  let n = 0;
+  for (const chat of chats) {
+    try { const r = await fetch('https://api.telegram.org/bot' + token + '/sendMessage', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chat, text, disable_web_page_preview: true }), signal: AbortSignal.timeout(8000) }); if ((await r.json()).ok) n++; } catch {}
+  }
+  return n;
+}
 const { makeKeystore } = apiKeystore;
 const API_KEY_PEPPER = envValue('API_KEY_PEPPER');
 
@@ -39,7 +64,10 @@ const INSTRUCTIONS =
   'notices with deadlines (list_tenders, list_tender_categories, get_tender), Amharic news (list_news, ' +
   'get_news_article), 25 bilingual Digital ' +
   'Ethiopia guides (get_ethiopia_guide), licensed Ethiopian overseas employment agencies with their GCC partner offices (list_overseas_agencies), BinaPool shared commute (list_pool_corridors, find_pool_groups), job ' +
-  'vacancies and the companies posting them (list_jobs, get_job, list_job_fields, get_employer), Amharic films (list_films) and a knowledge ' +
+  'vacancies and the companies posting them (list_jobs, get_job, list_job_fields, get_employer), Amharic films (list_films), ' +
+  'restaurants and cafés (search_restaurants), pharmacies and whether one has reported a medicine (search_pharmacies), companies (search_companies), ' +
+  'cinema showtimes (list_cinema_showtimes), Ethiopian TV and radio channels live now (list_tv_and_radio), TV series and their newest episodes ' +
+  '(list_tv_series) and a knowledge ' +
   'base about every BinaSmart service, Ethiopian paperwork and practical Addis Ababa life (search_knowledge). ' +
   'request_ride sends a real driver, so it takes the pickup, drop-off, tier, fare and Ethiopian phone as the user confirmed them; ' +
   'quote_ride also returns book_url, which opens bina.et/ride with that route and fixed fare for the user to confirm themselves. Fares ' +
@@ -97,11 +125,12 @@ export function buildServer({ rideApi, db, guides, callerKey, callsRL, bookRL })
   registerJobTools(server, { db, wrap, json });
   registerMarketTools(server, { wrap, json });
   registerHealthTools(server, { wrap, json });
+  registerServiceTools(server, { wrap, json });
   registerWidgets(server);
   return server;
 }
 
-export function createApp({ rideApi, db, guides, callLimit = { windowMs: 60_000, max: 30 }, bookLimit = { windowMs: 3_600_000, max: 10 },
+export function createApp({ rideApi, db, guides, businessAgents, healthAgents, hotelAgents, requestDesk, callLimit = { windowMs: 60_000, max: 30 }, bookLimit = { windowMs: 3_600_000, max: 10 },
   // The meter (api/gate.js), shared with binasmart-api through /root/storage/api/usage: ONE anonymous
   // allowance across bina.et/mcp and bina.et/api/knowledge/search, because they are two doors onto the
   // same 23,463 chunks. Injectable so a test never writes to the real counter directory.
@@ -160,12 +189,68 @@ export function createApp({ rideApi, db, guides, callLimit = { windowMs: 60_000,
     res.setHeader('Content-Type', 'text/markdown; charset=utf-8'); res.setHeader('Cache-Control', 'public, max-age=3600'); res.send(DOCS_MD);
   });
   app.delete('/mcp', (_req, res) => res.sendStatus(405));
+  // A2A front door (lib/a2a.mjs, 24 Oct 2026): the same tools over Agent2Agent JSON-RPC. message/send is charged to the
+  // same meter as /mcp - one allowance per caller across every door onto the same data; reading a finished task is free.
+  const a2a = makeA2AHandler({ buildServer, serverOpts: { rideApi, db, guides, callsRL, bookRL } });
+  app.post('/a2a', async (req, res) => {
+    const body = req.body || {};
+    const charge = body.method === 'message/send';
+    const d = gate.check({ headers: req.headers, ip: req.ip, endpoint: charge ? 'a2a' : 'a2a:' + String(body.method || 'unknown').slice(0, 40), charge });
+    if (!d.allowed) { res.setHeader('Retry-After', String(d.retryAfter)); return res.status(d.status).json(d.body); }
+    try { res.json(await a2a(body, d.caller)); }
+    catch (e) { console.error('[a2a] error:', e && e.message); res.status(500).json(rpcError(body.id, -32603, 'Internal error')); }
+  });
+  // A2A step 2 (24 Oct 2026): one agent per place page, run by BinaSmart from the public page - companies
+  // (lib/a2a-business.mjs), health facilities and hotels (lib/a2a-places.mjs). Same routes and meter for each family.
+  // A2A step 3 (lib/a2a-requests.mjs): requests to a place go to the BinaSmart admin chat ONLY, never to the place or
+  // the person; the team phones the place. Off unless A2A_REQUESTS=1 in .env.
+  const desk = requestDesk || makeRequestDesk({ enabled: envValue('A2A_REQUESTS') === '1', sendAdmin: adminTelegram });
+  const families = {
+    companies: { agents: businessAgents || makeBusinessAgents({ db }), flag: 'confirmed_by_company', what: 'company page (real-estate companies, car sellers, overseas employment agencies and more)' },
+    health: { agents: healthAgents || makeHealthAgents(), flag: 'confirmed_by_facility', what: 'health facility page (hospitals, clinics, dentists, labs, pharmacies)' },
+    hotels: { agents: hotelAgents || makeHotelAgents(), flag: 'claimed_by_hotel', what: 'hotel page (hotels, guest houses, hostels, apartments, motels)' },
+  };
+  for (const [fam, f] of Object.entries(families)) {
+    app.get('/a2a/' + fam, async (_req, res) => {
+      try { const agents = await f.agents.list(); res.setHeader('Cache-Control', 'public, max-age=300');
+        res.json({ count: agents.length, note: `One A2A agent per ${f.what} on bina.et, run by BinaSmart from the public page; it does not speak for the place. ${f.flag} is true only when the place itself did it.`, agents }); }
+      catch (e) { console.error(`[a2a-${fam}] list:`, e && e.message); res.status(503).json({ error: 'The directory is temporarily unavailable.' }); }
+    });
+    app.get(['/a2a/' + fam + '/:slug', '/a2a/' + fam + '/:slug/.well-known/agent-card.json'], async (req, res) => {
+      try { const c = await f.agents.card(req.params.slug);
+        if (c && desk.enabled) c.skills = [...c.skills, desk.skill(c.name.replace(/ on BinaSmart$/, ''))];
+        if (!c) return res.status(404).json({ error: 'No agent with that name.', list: `https://bina.et/a2a/${fam}` });
+        res.setHeader('Cache-Control', 'public, max-age=300'); res.json(c); }
+      catch (e) { console.error(`[a2a-${fam}] card:`, e && e.message); res.status(503).json({ error: 'The directory is temporarily unavailable.' }); }
+    });
+    app.post('/a2a/' + fam + '/:slug', async (req, res) => {
+      const body = req.body || {};
+      const charge = body.method === 'message/send';
+      const d = gate.check({ headers: req.headers, ip: req.ip, endpoint: charge ? 'a2a-' + fam : `a2a-${fam}:` + String(body.method || 'unknown').slice(0, 40), charge });
+      if (!d.allowed) { res.setHeader('Retry-After', String(d.retryAfter)); return res.status(d.status).json(d.body); }
+      try {
+        // a dry run only from this machine itself: nginx always sets X-Real-IP, so an outside caller can never be one
+        const dryRun = evalGate.localEvalDryRun(req);   // ../api/evalGate.js owns what the header may claim
+        const card = await f.agents.card(req.params.slug);
+        const r = card ? await desk.rpc({ body, family: fam, slug: req.params.slug, card, callerKey: d.caller, dryRun }) : null;
+        res.json(r || await f.agents.handle(req.params.slug, body, d.caller)); }
+      catch (e) { console.error(`[a2a-${fam}] error:`, e && e.message); res.status(500).json(rpcError(body.id, -32603, 'Internal error')); }
+    });
+  }
+  app.get('/a2a/requests/:id/decide', (req, res) => { const r = desk.decidePage(req.params.id, req.query.t, String(req.query.d || ''), false); res.status(r.status).type('html').send(r.html); });
+  app.post('/a2a/requests/:id/decide', (req, res) => { const r = desk.decidePage(req.params.id, req.query.t, String(req.query.d || ''), true); res.status(r.status).type('html').send(r.html); });
+  app.get('/a2a', (_req, res) => res.json({ protocol: 'A2A 0.3, JSON-RPC 2.0', method: 'message/send', agentCard: 'https://bina.et/.well-known/agent-card.json', docs: 'https://bina.et/mcp' }));
   app.get('/mcp/health', async (_req, res) => {
     const out = { ok: true, db: true, ride_api: true };
     try { await db.query('SELECT 1', []); } catch { out.db = false; }
     try { const s = await rideApi.settings(); if (!s || s.ok === false) out.ride_api = false; } catch { out.ride_api = false; }
     out.ok = out.db && out.ride_api;
     res.status(out.ok ? 200 : 503).json(out);
+  });
+  // A body that is not JSON: A2A callers get a JSON-RPC parse error, not express's HTML 400.
+  app.use((e, req, res, next) => {
+    if (req.path.startsWith('/a2a') && e && e.type === 'entity.parse.failed') return res.status(200).json(rpcError(null, -32700, 'Parse error'));
+    next(e);
   });
   return app;
 }

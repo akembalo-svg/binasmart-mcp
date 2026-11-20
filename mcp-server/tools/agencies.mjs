@@ -15,7 +15,14 @@ export function registerAgencyTools(server, { wrap, json, fetchImpl = fetch }) {
       if (!r.ok) return toolError('The agency list is temporarily unavailable.');
       const d = await r.json();
       return json({ count: d.agencies.length, updated: d.updated, agencies: d.agencies.map(a => ({ name: a.name, licence: a.licence, city: a.city,
-        in_ministry_register: a.in_register, countries: a.countries, page: `${BASE}/overseas-agencies/${a.slug}` })), source_url: `${BASE}/overseas-agencies` });
+        in_ministry_register: a.in_register, countries: a.countries, page: `${BASE}/overseas-agencies/${a.slug}` })),
+        // When no agency has finished the partner check the API answers with an empty list AND a
+        // note saying bina.et still lists the whole Ministry register. Dropping it here left the
+        // tool saying only "count: 0", which an assistant reads as "Ethiopia has no licensed
+        // agencies" - the opposite of true, and the one thing a family must not be told.
+        ...(d.note ? { note: d.note } : {}),
+        ...(d.ministry_register ? { ministry_register: d.ministry_register } : {}),
+        source_url: `${BASE}/overseas-agencies` });
     } catch (e) { return toolError('The agency list is temporarily unavailable.'); }
   }));
 }

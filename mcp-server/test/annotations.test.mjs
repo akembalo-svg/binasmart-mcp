@@ -21,7 +21,7 @@ const text = await res.text();
 const tools = JSON.parse((text.split('\n').find(l => l.startsWith('data:')) || 'data:' + text).slice(5)).result.tools;
 
 test('every tool has a title, the same title in annotations.title, and a readOnlyHint', () => {
-  assert.equal(tools.length, 27);
+  assert.equal(tools.length, 33);
   for (const t of tools) {
     assert.ok(t.title, t.name + ' title');
     assert.equal(t.annotations && t.annotations.title, t.title, t.name + ' annotations.title');

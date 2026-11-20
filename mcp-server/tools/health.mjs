@@ -3,6 +3,8 @@
 // facilities confirmed and the BinaSmart team checked (a doctor's licence is checked by a person before a profile shows).
 // Only what the public pages show: landlines, page links, confirmed services. Never a licence number or a private mobile.
 // Not medical advice, and an emergency is 907.
+import { PLACES_WIDGET_URI } from '../lib/widgets.mjs';
+import { registerAppTool } from '@modelcontextprotocol/ext-apps/server';
 import { z } from 'zod';
 import { toolError } from './ride.mjs';
 
@@ -20,7 +22,7 @@ const NOTE = 'From BinaSmart Health (bina.et/health): the city map (OpenStreetMa
   + 'This is a directory, not medical advice. In an emergency in Addis Ababa call 907 (ambulance).';
 
 export function registerHealthTools(server, { wrap, json }) {
-  server.registerTool('search_health', {
+  registerAppTool(server, 'search_health', {
     title: 'Hospitals, clinics, dentists and doctors in Addis Ababa',
     description: 'Find hospitals, clinics, dentists, laboratories, health centres and doctors in Addis Ababa from BinaSmart Health (bina.et/health, 250+ places from the city map plus services and doctors the facilities confirmed; doctors\' licences are checked by the BinaSmart team). Filter by kind, sub-city, a place to be near (nearest first) and a specialty (children, gynecology, eye, heart, bone, fertility, skin, mental health, blood test). Returns each place\'s bina.et/health page, landline, sub-city, distance, and its services and doctors when known. Not medical advice; emergencies: 907.',
     inputSchema: {
@@ -31,6 +33,7 @@ export function registerHealthTools(server, { wrap, json }) {
       limit: z.number().int().min(1).max(10).optional().describe('Max results, default 6'),
     },
     annotations: { readOnlyHint: true, openWorldHint: false },
+    _meta: { ui: { resourceUri: PLACES_WIDGET_URI } },   // cards in hosts with MCP Apps (19 Oct 2026); the JSON is unchanged
   }, wrap('search_health', async ({ kind, area, near, specialty, limit }) => {
     let lat, lng, nearName;
     if (near) {

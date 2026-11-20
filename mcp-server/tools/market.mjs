@@ -1,6 +1,8 @@
 // Homes, cars and places to stay on BinaSmart, for AI assistants: the same live searches Bini uses
 // (/api/properties/search, /api/cars/search and /api/hotels/search on the site). The listings come from the companies',
 // dealers' and hotels' own websites and the city map; the contacts returned are THEIR own - BinaSmart is not the agent.
+import { registerAppTool } from '@modelcontextprotocol/ext-apps/server';
+import { PLACES_WIDGET_URI } from '../lib/widgets.mjs';
 import { z } from 'zod';
 import { toolError } from './ride.mjs';
 
@@ -14,7 +16,7 @@ const qs = o => new URLSearchParams(Object.entries(o).filter(([, v]) => v !== un
 const RO = { readOnlyHint: true, openWorldHint: false };
 
 export function registerMarketTools(server, { wrap, json }) {
-  server.registerTool('search_properties', {
+  registerAppTool(server, 'search_properties', {
     title: 'Homes, land and shops for sale or rent in Addis Ababa',
     description: 'Live listings on bina.et/property from Addis Ababa real-estate companies\' own websites, checked every week: title, price as the company wrote it (some per m² or in USD), bedrooms, size, area, the listing company with its own phone and WhatsApp, the date the company last updated it, and a bina.et link with every photo. Use for "apartment for rent in Bole", "3 bedroom for sale", "ቤት ኪራይ". Every listing and price is as the company published it.',
     inputSchema: {
@@ -27,6 +29,7 @@ export function registerMarketTools(server, { wrap, json }) {
       limit: z.number().int().min(1).max(8).optional().describe('Max results, default 5'),
     },
     annotations: RO,
+    _meta: { ui: { resourceUri: PLACES_WIDGET_URI } },   // cards in hosts with MCP Apps (19 Oct 2026); the JSON is unchanged
   }, wrap('search_properties', async ({ listing, type, area, beds, max_price, query, limit }) => {
     let d; try { d = await get('/api/properties/search?' + qs({ listing, type, area, beds, maxPrice: max_price, q: query, limit: limit || 5 })); }
     catch (e) { return toolError('BinaSmart property search is temporarily unavailable. Browse https://bina.et/property.'); }
@@ -34,7 +37,7 @@ export function registerMarketTools(server, { wrap, json }) {
     return json({ count: d.total, results: d.results, note: 'From the companies\' own websites. The buyer contacts the listing company directly (its own phone/WhatsApp); BinaSmart is not the agent and takes no fee. Prices exactly as the company wrote them.', source_url: 'https://bina.et/property' });
   }));
 
-  server.registerTool('search_cars', {
+  registerAppTool(server, 'search_cars', {
     title: 'Cars for sale in Addis Ababa',
     description: 'Live new and used cars on bina.et/cars from Addis Ababa dealers\' and car markets\' own websites, checked every week: make, model, year, price, mileage, fuel, gearbox, the dealer with its own phone and WhatsApp, and a bina.et link with every photo. Use for "used Toyota", "SUV under 10 million birr", "electric car price", "BYD". Not for taxi rides. Source: the BinaSmart car listings at https://bina.et/cars.',
     inputSchema: {
@@ -49,6 +52,7 @@ export function registerMarketTools(server, { wrap, json }) {
       limit: z.number().int().min(1).max(8).optional().describe('Max results, default 5'),
     },
     annotations: RO,
+    _meta: { ui: { resourceUri: PLACES_WIDGET_URI } },   // cards in hosts with MCP Apps (19 Oct 2026); the JSON is unchanged
   }, wrap('search_cars', async ({ make, model, body, fuel, condition, min_year, max_price, cheapest_first, limit }) => {
     let d; try { d = await get('/api/cars/search?' + qs({ make, model, body, fuel, condition, minYear: min_year, maxPrice: max_price, sort: cheapest_first ? 'cheap' : '', limit: limit || 5 })); }
     catch (e) { return toolError('BinaSmart car search is temporarily unavailable. Browse https://bina.et/cars.'); }
@@ -56,7 +60,7 @@ export function registerMarketTools(server, { wrap, json }) {
     return json({ count: d.total, results: d.results, note: 'From the dealers\' own websites. The buyer contacts the dealer directly; BinaSmart is not the seller. Prices exactly as the dealer wrote them.', source_url: 'https://bina.et/cars' });
   }));
 
-  server.registerTool('search_hotels', {
+  registerAppTool(server, 'search_hotels', {
     title: 'Hotels and guest houses in Addis Ababa',
     description: 'Hotels, guest houses, pensions, hostels and furnished apartments in Addis Ababa from BinaSmart\'s directory (1,000+ places from the city map): name, type, sub-city, stars, the hotel\'s own office phone and website, and its bina.et page. It has no prices or room availability: those come from the hotel, whose phone is included. Not for hospitals or clinics (use search_health) or for shops, restaurants and other buildings (use search_places).',
     inputSchema: {
@@ -67,6 +71,7 @@ export function registerMarketTools(server, { wrap, json }) {
       limit: z.number().int().min(1).max(10).optional().describe('Max results, default 6'),
     },
     annotations: RO,
+    _meta: { ui: { resourceUri: PLACES_WIDGET_URI } },   // cards in hosts with MCP Apps (19 Oct 2026); the JSON is unchanged
   }, wrap('search_hotels', async ({ area, kind, min_stars, name, limit }) => {
     let d; try { d = await get('/api/hotels/search?' + qs({ area, kind, minStars: min_stars, q: name, limit: limit || 6 })); }
     catch (e) { return toolError('BinaSmart hotel search is temporarily unavailable. Browse https://bina.et/hotels.'); }

@@ -11,6 +11,8 @@ import { registerAppResource, RESOURCE_MIME_TYPE } from '@modelcontextprotocol/e
 //
 // The URI carries a version: hosts cache UI resources hard, so a changed widget gets a new name (jobs-v2.html …).
 export const JOBS_WIDGET_URI = 'ui://bina/jobs-v1.html';
+// 19 Oct 2026: one card page for search_restaurants, search_pharmacies and search_properties (widgets/places.html).
+export const PLACES_WIDGET_URI = 'ui://bina/places-v2.html';   // v2 19 Oct 2026: hotels, health, cars, companies, tenders, events
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
@@ -33,7 +35,17 @@ export function jobsWidgetHtml() {
   return html;
 }
 
+let placesHtml;
+export function placesWidgetHtml() {
+  if (!placesHtml) placesHtml = fs.readFileSync(path.join(here, '..', 'widgets', 'places.html'), 'utf8').replace('/*__EXT_APPS_BUNDLE__*/', () => inlineBundle());
+  return placesHtml;
+}
+
 export function registerWidgets(server) {
+  registerAppResource(server, 'BinaSmart place cards', PLACES_WIDGET_URI,
+    { description: 'Cards for search_restaurants, search_pharmacies, search_properties, search_hotels, search_health, search_cars, search_companies, list_tenders and list_events: name, area, phone, price, and buttons that open the item on bina.et or bina.et/ride.' },
+    async () => ({ contents: [{ uri: PLACES_WIDGET_URI, mimeType: RESOURCE_MIME_TYPE, text: placesWidgetHtml(),
+      _meta: { ui: { prefersBorder: true, csp: { connectDomains: [], resourceDomains: [] } } } }] }));
   registerAppResource(server, 'BinaSmart job cards', JOBS_WIDGET_URI,
     { description: 'Interactive cards for list_jobs results: each vacancy with its employer, deadline and an apply link on bina.et.' },
     async () => ({ contents: [{ uri: JOBS_WIDGET_URI, mimeType: RESOURCE_MIME_TYPE, text: jobsWidgetHtml(),

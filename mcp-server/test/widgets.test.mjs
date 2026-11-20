@@ -47,9 +47,11 @@ test('list_jobs names the widget; resources/list and resources/read serve it as 
   assert.equal(lj._meta.ui.resourceUri, JOBS_WIDGET_URI);
   assert.equal(lj._meta['ui/resourceUri'], JOBS_WIDGET_URI);
   assert.equal(lj.annotations.readOnlyHint, true);
-  assert.equal(tools.filter(t => t._meta && t._meta.ui).length, 1, 'only list_jobs has a widget');
+  // 19 Oct 2026: list_jobs (job cards) + search_restaurants, search_pharmacies, search_properties (place cards).
+  assert.deepEqual(tools.filter(t => t._meta && t._meta.ui).map(t => t.name).sort(), ['list_events', 'list_jobs', 'list_tenders', 'search_cars', 'search_companies', 'search_health', 'search_hotels', 'search_pharmacies', 'search_properties', 'search_restaurants']);
   const res = (await rpc(url, 'resources/list', {})).body.result.resources;
-  assert.deepEqual(res.map(r => [r.uri, r.mimeType]), [[JOBS_WIDGET_URI, 'text/html;profile=mcp-app']]);
+  // 19 Oct 2026: the place cards (ui://bina/places-v1.html) are served too.
+  assert.deepEqual(res.map(r => [r.uri, r.mimeType]).sort(), [[JOBS_WIDGET_URI, 'text/html;profile=mcp-app'], ['ui://bina/places-v2.html', 'text/html;profile=mcp-app']].sort());
   const read = (await rpc(url, 'resources/read', { uri: JOBS_WIDGET_URI })).body.result.contents[0];
   assert.equal(read.mimeType, 'text/html;profile=mcp-app');
   assert.match(read.text, /BinaSmart job cards/);

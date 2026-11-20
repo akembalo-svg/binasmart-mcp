@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BinaSmart place cards</title>
+<!--
+  MCP App for search_restaurants, search_pharmacies, search_properties, search_hotels, search_health, search_cars,
+  search_companies, list_tenders and list_events (19 Oct 2026), built like widgets/jobs.html. One page: norm() tells the
+  results apart by their fields (search_hotels/health/cars/properties all return "results").
+  The host hands this page the tool result; the JSON is exactly what the tool returns as text, so a host without the apps
+  surface shows the same data. Read-only: buttons open bina.et (app.openLink: the place's page, or bina.et/ride with the
+  place as drop-off) or ask the assistant a follow-up. Phones are shown as text to copy: tel: links do not work in every
+  host. Nothing here books, buys or sends anything.
+-->
+<style>
+  :root {
+    --card: var(--color-background-secondary, #f5f7fc);
+    --ink: var(--color-text-primary, #111a32);
+    --mut: var(--color-text-secondary, #566180);
+    --line: var(--color-border-primary, #dce3f2);
+    --acc: #0f766e; --acc2: #14b8a6; --link: #0f766e;
+    --tag-bg: #e3f6f3; --tag-ink: #0f5d57;
+    --radius: var(--border-radius-lg, 14px);
+    --font: var(--font-sans, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif);
+    --ethi: "Noto Sans Ethiopic", "Abyssinica SIL", "Nyala", "Ebrima", "Kefa", var(--font);
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --card: var(--color-background-secondary, #172427); --ink: var(--color-text-primary, #e6f0ef);
+      --mut: var(--color-text-secondary, #9fb3b0); --line: var(--color-border-primary, #2a3d3f);
+      --link: #5eead4; --tag-bg: #143b37; --tag-ink: #a7f3e6; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --card: var(--color-background-secondary, #172427); --ink: var(--color-text-primary, #e6f0ef);
+    --mut: var(--color-text-secondary, #9fb3b0); --line: var(--color-border-primary, #2a3d3f);
+    --link: #5eead4; --tag-bg: #143b37; --tag-ink: #a7f3e6; color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: transparent; }
+  body { font: 14px/1.5 var(--font); color: var(--ink); -webkit-font-smoothing: antialiased; }
+  #root { padding: 14px 14px 12px; display: flex; flex-direction: column; gap: 12px; }
+  .hd { display: flex; align-items: center; gap: 11px; }
+  .mark { width: 34px; height: 34px; border-radius: 10px; flex: none; display: grid; place-items: center; font-size: 18px;
+          background: linear-gradient(135deg, var(--acc2), var(--acc)); }
+  .hd .t { font-weight: 700; font-size: 15px; }
+  .hd .s { color: var(--mut); font-size: 12.5px; }
+  .note { background: var(--tag-bg); color: var(--tag-ink); border-radius: 10px; padding: 9px 12px; font-size: 13px; }
+  .note:empty { display: none; }
+  .list { display: flex; flex-direction: column; gap: 10px; }
+  .pl { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 13px 15px 12px;
+        display: flex; flex-direction: column; gap: 6px; }
+  .row1 { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+  .pl h3 { margin: 0; font-size: 15px; line-height: 1.32; font-weight: 650; overflow-wrap: anywhere; }
+  .am { font-family: var(--ethi); color: var(--mut); font-size: 13.5px; margin-top: -3px; }
+  .tag { flex: none; border-radius: 999px; padding: 2px 9px; font-size: 12px; font-weight: 650; white-space: nowrap;
+         background: var(--tag-bg); color: var(--tag-ink); }
+  .meta { color: var(--mut); font-size: 13px; display: flex; flex-wrap: wrap; gap: 2px 12px; }
+  .price { font-weight: 700; font-size: 14.5px; font-variant-numeric: tabular-nums; }
+  .phone { font-variant-numeric: tabular-nums; user-select: all; color: var(--ink); font-weight: 600; }
+  .act { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 3px; }
+  button { font: inherit; cursor: pointer; }
+  .lnk { background: none; border: 0; padding: 0; color: var(--link); font-weight: 600; }
+  .pri { border: 0; border-radius: 999px; padding: 7px 15px; font-size: 13px; font-weight: 700; color: #fff;
+         background: linear-gradient(135deg, var(--acc2), var(--acc)); }
+  .sec { border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; font-size: 13px; font-weight: 600;
+         color: var(--ink); background: transparent; }
+  .sec[disabled] { opacity: .6; cursor: default; }
+  button:focus-visible { outline: 2px solid var(--acc2); outline-offset: 2px; }
+  .more { align-self: center; }
+  .ft { color: var(--mut); font-size: 12px; line-height: 1.45; border-top: 1px solid var(--line); padding-top: 10px; }
+  .ft:empty { display: none; }
+  .msg { color: var(--mut); padding: 6px 2px; }
+  .skel { height: 84px; border-radius: var(--radius); background: var(--card); border: 1px solid var(--line); }
+  @media (max-width: 420px) { #root { padding: 12px 10px 10px; } .pl { padding: 12px 12px 11px; } }
+</style>
+</head>
+<body>
+<div id="root">
+  <header class="hd">
+    <span class="mark" id="mark" aria-hidden="true">📍</span>
+    <div><div class="t" id="title">Places in Addis Ababa</div><div class="s" id="sub">BinaSmart · bina.et</div></div>
+  </header>
+  <div class="note" id="note"></div>
+  <div class="list" id="list" aria-live="polite"><div class="skel"></div><div class="skel"></div></div>
+  <button class="sec more" id="more" type="button" hidden></button>
+  <footer class="ft" id="foot"></footer>
+</div>
+<script type="module">/*__EXT_APPS_BUNDLE__*/</script>
+<script type="module">
+const EXT = globalThis.ExtApps || {};
+const app = new EXT.App({ name: 'BinaSmart place cards', version: '1.0.0' }, {}, { autoResize: true });
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+const onBina = u => typeof u === 'string' && /^https:\/\/bina\.et\//.test(u);
+const inAddis = c => c && isFinite(+c.lat) && isFinite(+c.lng) && +c.lat > 8.5 && +c.lat < 9.5 && +c.lng > 38.4 && +c.lng < 39.2;
+const rideUrl = (name, c) => 'https://bina.et/ride?to=' + encodeURIComponent(name) + '&lat=' + (+c.lat).toFixed(6) + '&lng=' + (+c.lng).toFixed(6);
+const KIND = { restaurant: 'Restaurant', cafe: 'Café', fast_food: 'Fast food' };
+const FIRST = 6;
+let items = [], shown = FIRST, kind = 'place';
+
+function applyTheme(ctx) {
+  if (!ctx) return;
+  if (ctx.theme === 'dark' || ctx.theme === 'light') document.documentElement.dataset.theme = ctx.theme;
+  try { if (ctx.styles && ctx.styles.variables && EXT.applyHostStyleVariables) EXT.applyHostStyleVariables(ctx.styles.variables); } catch {}
+  const i = ctx.safeAreaInsets;
+  if (i) $('root').style.padding = `${14 + (i.top || 0)}px ${14 + (i.right || 0)}px ${12 + (i.bottom || 0)}px ${14 + (i.left || 0)}px`;
+}
+
+// One shape for the three tools: { name, am, tag, meta[], price, phone, url, coords }.
+function norm(data) {
+  if (Array.isArray(data.restaurants)) { kind = 'restaurant';
+    return data.restaurants.map(r => ({ name: r.name, am: r.name_am, tag: r.confirmed ? 'Confirmed' : KIND[r.kind] || '',
+      meta: [r.sub_city, KIND[r.kind], (r.cuisine || []).join(', ')].filter(Boolean), phone: r.phone, url: r.url, coords: r.coords })); }
+  if (Array.isArray(data.pharmacies)) { kind = 'pharmacy';
+    return data.pharmacies.map(p => ({ name: p.name, am: p.name_am, tag: p.confirmed ? 'Confirmed' : '', meta: [p.sub_city].filter(Boolean), phone: p.phone, url: p.url })); }
+  if (Array.isArray(data.companies)) { kind = 'company';
+    return data.companies.map(c => ({ name: c.name, am: c.name_am, tag: c.hiring ? 'Hiring' : c.confirmed ? 'Confirmed' : '',
+      meta: [String(c.kind || '').replace(/_/g, ' '), c.sub_city, c.website].filter(Boolean), url: c.url })); }
+  if (Array.isArray(data.tenders)) { kind = 'tender';
+    return data.tenders.map(t => ({ name: t.title, am: t.title_am, tag: t.closed ? 'Closed' : t.days_left != null ? `${t.days_left} day${t.days_left === 1 ? '' : 's'} left` : '',
+      meta: [t.org, t.category, t.region].filter(Boolean), url: t.url })); }
+  if (Array.isArray(data.events)) { kind = 'event';
+    return data.events.map(e => ({ name: e.title, tag: e.seats_left != null ? `${e.seats_left} seats left` : '',
+      price: e.price_from_etb != null ? `From ${e.price_from_etb} birr` : '', meta: [e.venue, e.starts_at && new Date(e.starts_at).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Africa/Addis_Ababa' })].filter(Boolean), url: e.url })); }
+  const first = Array.isArray(data.results) && data.results[0] || {};
+  if (Array.isArray(data.results) && ('dealer' in first || 'make' in first)) { kind = 'car';
+    return data.results.map(c => ({ name: c.title, price: c.price, tag: c.condition || c.fuel || '',
+      meta: [c.year, c.mileage, c.transmission, c.dealer, c.location].filter(Boolean), phone: c.phone || c.whatsapp, url: c.link })); }
+  if (Array.isArray(data.results) && ('stars' in first || 'fromBoleAirport' in first)) { kind = 'hotel';
+    return data.results.map(h => ({ name: h.name, am: h.nameAm, tag: h.stars ? '★'.repeat(Math.min(5, h.stars)) : h.confirmedByHotel ? 'Confirmed' : '',
+      meta: [h.kind, h.area, h.fromBoleAirport].filter(Boolean), phone: h.phone, url: h.link })); }
+  if (Array.isArray(data.results) && ('services' in first || 'hours' in first)) { kind = 'health';
+    return data.results.map(h => ({ name: h.name, am: h.nameAm, tag: h.hours === '24/7' ? 'Open 24/7' : h.confirmed ? 'Confirmed' : '',
+      meta: [h.kind, h.area, (h.services || []).slice(0, 3).join(', ')].filter(Boolean), phone: h.phone, url: h.url })); }
+  if (Array.isArray(data.results)) { kind = 'home';
+    return data.results.map(h => ({ name: h.title, tag: h.listing === 'rent' ? 'For rent' : h.listing === 'sale' ? 'For sale' : '',
+      price: h.price, meta: [h.area, h.beds && h.beds + ' bed', h.size, h.company].filter(Boolean), phone: h.phone || h.whatsapp, url: h.link })); }
+  return [];
+}
+
+function card(p, i) {
+  const ride = inAddis(p.coords);
+  return `<article class="pl">
+    <div class="row1"><h3>${esc(p.name)}</h3>${p.tag ? `<span class="tag">${esc(p.tag)}</span>` : ''}</div>
+    ${p.am ? `<div class="am" lang="am">${esc(p.am)}</div>` : ''}
+    ${p.price ? `<div class="price">${esc(p.price)}</div>` : ''}
+    ${p.meta.length ? `<div class="meta">${p.meta.map(m => `<span>${esc(m)}</span>`).join('')}</div>` : ''}
+    ${p.phone ? `<div class="meta">Phone <span class="phone">${esc(p.phone)}</span></div>` : ''}
+    <div class="act">
+      ${onBina(p.url) ? `<button class="pri" type="button" data-open="${esc(p.url)}">Open on bina.et ↗</button>` : ''}
+      ${ride ? `<button class="sec" type="button" data-open="${esc(rideUrl(p.name, p.coords))}">🚕 Ride there</button>` : ''}
+      <button class="sec" type="button" data-ask="${i}">Ask about this</button>
+    </div>
+  </article>`;
+}
+
+function render() {
+  $('list').innerHTML = items.slice(0, shown).map(card).join('');
+  const left = items.length - shown;
+  $('more').hidden = left <= 0; $('more').textContent = `Show ${Math.min(left, FIRST)} more`;
+}
+
+function showError(text) {
+  $('title').textContent = 'Nothing to show';
+  $('list').innerHTML = `<div class="msg">${esc(text || 'BinaSmart is unavailable right now.')}</div>
+    <div class="act"><button class="pri" type="button" data-open="https://bina.et">Open bina.et ↗</button></div>`;
+  $('more').hidden = true; $('foot').textContent = ''; $('note').textContent = '';
+}
+
+app.ontoolresult = (result) => {
+  const text = (result && result.content || []).filter(c => c.type === 'text').map(c => c.text).join('\n');
+  if (!result || result.isError) return showError(text);
+  let data; try { data = JSON.parse(text); } catch { return showError(text); }
+  items = norm(data); shown = FIRST;
+  if (!items.length) return showError('Nothing matched.');
+  const n = data.count || items.length;
+  const T = { restaurant: ['🍽', 'restaurants and cafés'], pharmacy: ['💊', 'pharmacies'], home: ['🏠', 'homes'], company: ['🏢', 'companies'],
+    tender: ['📑', 'open tenders'], event: ['🎟', 'events'], car: ['🚗', 'cars'], hotel: ['🏨', 'hotels'], health: ['🏥', 'health places'] }[kind] || ['📍', 'places'];
+  $('mark').textContent = T[0];
+  $('title').textContent = `${n} ${T[1]}` + (n > items.length ? ` (showing ${items.length})` : '');
+  if (onBina(data.source_url)) $('sub').innerHTML = `BinaSmart · <button class="lnk" type="button" data-open="${esc(data.source_url)}">${esc(data.source_url.replace('https://', ''))}</button>`;
+  const m = data.medicine_check;
+  $('note').textContent = m ? (m.medicine ? `${m.medicine}${m.prescription_needed ? ' (prescription needed)' : ''}: ` : '') + (m.note || '') : '';
+  $('foot').textContent = data.note || '';
+  render();
+};
+
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.id === 'more') { shown += FIRST; return render(); }
+  if (b.dataset.open && onBina(b.dataset.open)) return void app.openLink({ url: b.dataset.open }).catch(() => {});
+  if (b.dataset.ask != null) {
+    const p = items[Number(b.dataset.ask)]; if (!p) return;
+    b.disabled = true; b.textContent = 'Asked ✓';
+    app.sendMessage({ role: 'user', content: [{ type: 'text', text: `Tell me more about "${p.name}" on BinaSmart` + (p.url ? ` (${p.url})` : '') + '.' }] })
+      .catch(() => { b.disabled = false; b.textContent = 'Ask about this'; });
+  }
+});
+
+app.onhostcontextchanged = applyTheme;
+try { await app.connect(); applyTheme(app.getHostContext && app.getHostContext()); }
+catch { $('list').innerHTML = '<div class="msg">The results are on https://bina.et</div>'; }
+</script>
+</body>
+</html>

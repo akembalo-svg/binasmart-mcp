@@ -29,7 +29,8 @@ export const OUTPUTS = {
   quote_ride: out({
     pickup: S('Resolved pickup place'), dropoff: S('Resolved drop-off place'), distance_km: N('Route distance in km'), eta_min: N('Trip time in minutes'),
     estimate: B('true when the route time is an estimate'),
-    quotes: A('Fixed fare for each vehicle tier', { tier: S('Tier id to pass to request_ride'), label: S('Tier name'), label_am: S('Tier name in Amharic'), seats: N('Seats'), fare_etb: N('Fixed fare in birr'), eta_min: N('Driver arrival estimate in minutes'), book_url: S('bina.et/ride link for this tier') }),
+    quotes: A('Fixed fare for each vehicle tier', { tier: S('Tier id to pass to request_ride'), label: S('Tier name'), label_am: S('Tier name in Amharic'), seats: N('Seats'), fare_etb: N('Fixed fare in birr'), eta_min: N('Driver arrival estimate in minutes'), drivers_near: N('Drivers who could come to this pickup now; 0 means request_ride will be refused'), book_url: S('bina.et/ride link for this tier') }),
+    drivers_available: B('false when no driver is free near the pickup right now: say so before booking'),
     book_url: S('bina.et/ride link with this route for the user to confirm'), pickup_coords: S('Pickup "lat,lng"'), dropoff_coords: S('Drop-off "lat,lng"'), note, source_url,
   }),
   request_ride: out({ ...RIDE, duplicate: B('true when the same booking was already made'), booked_for: S('Passenger name when booked for someone else'), next_step: S('What to tell the user now'), whatsapp: S('BinaSmart WhatsApp support'), note }),
@@ -65,7 +66,11 @@ export const OUTPUTS = {
     slug: S('Guide slug'), title: S('Guide title'), summary: S('Summary'), text: S('Full guide text (Amharic and English)'), note, source_url,
   }),
   search_knowledge: out({ query: S('The query searched'), results: A('Best-matching passages', { title: S('Passage title'), source_url: S('Page it comes from'), text: S('Passage'), score: N('Relevance') }), note }),
-  list_overseas_agencies: out({ count, updated: S('When the list was last updated'), agencies: A('Licensed agencies with their GCC partner offices'), source_url }),
+  // `note` is declared here like every other tool's: when no agency has finished the partner check
+  // the API answers with an empty list AND a note saying bina.et still lists the whole Ministry
+  // register. passthrough() meant the note already reached clients, but an undeclared field is one
+  // a client has no reason to read - and "count: 0" alone reads as "Ethiopia has no agencies".
+  list_overseas_agencies: out({ count, updated: S('When the list was last updated'), agencies: A('Licensed agencies with their GCC partner offices'), note, ministry_register: O('The full Ministry of Labour and Skills register on bina.et, when no partner-checked agency is listed yet'), source_url }),
   list_jobs: out({ count, jobs: A('Open vacancies', { slug: S('Job slug for get_job'), title: S('Job title'), employer: S('Employer'), employer_url: S('Employer page'), city: S('City'), field: S('Field'), deadline: S('Application deadline'), days_left: N('Days until the deadline'), closed: B('true if closed'), url: S('Job page') }), note, source_url }),
   get_job: out({ job: O('The vacancy in full, with detail and employer_profile'), note, source_url }),
   list_job_fields: out({ fields: A('Job fields', { field: S('Field'), open_vacancies: N('Open vacancies'), url: S('Page') }), cities: A('Cities', { city: S('City'), open_vacancies: N('Open vacancies') }), source_url }),
@@ -79,3 +84,15 @@ export const OUTPUTS = {
   search_cars: out({ count, results: A('Cars from the dealers\' own websites', { title: S('Title'), make: S('Make'), model: S('Model'), price: S('Price as the dealer wrote it'), fuel: S('Fuel'), condition: S('New or used'), dealer: S('Dealer'), phone: S('Dealer phone'), link: S('bina.et listing') }), note, source_url }),
   search_hotels: out({ count, results: A('Hotels and guest houses', { name: S('Name'), nameAm: S('Name in Amharic'), kind: S('Type'), area: S('Area'), phone: S('Hotel phone'), website: S('Hotel website'), link: S('bina.et page') }), note, source_url }),
 };
+
+// MCP 1.4.0 (18 Oct 2026): restaurants, pharmacies, companies, cinema, TV/radio and series (tools/services.mjs).
+Object.assign(OUTPUTS, {
+  search_restaurants: out({ count, restaurants: A('Matching restaurants and cafés', { name: S('Name'), name_am: S('Name in Amharic'), kind: S('restaurant, cafe or fast_food'), sub_city: S('Sub-city'), phone: S('Phone'), confirmed: B('Confirmed by the restaurant'), coords: LL('Map point; pass as "lat,lng" to quote_ride'), url: S('bina.et page') }), note, source_url }),
+  search_pharmacies: out({ count, pharmacies: A('Matching pharmacies', { name: S('Name'), name_am: S('Name in Amharic'), sub_city: S('Sub-city'), phone: S('Phone'), confirmed: B('Confirmed by the pharmacy'), url: S('bina.et page') }),
+    medicine_check: O('Whether pharmacies reported the medicine', { medicine: S('Medicine'), prescription_needed: B('Needs a prescription'), reported_by: N('Pharmacies that reported having it in the last 7 days'), note }), note, source_url }),
+  search_companies: out({ count, companies: A('Matching companies', { name: S('Name'), name_am: S('Name in Amharic'), kind: S('Kind'), sub_city: S('Sub-city'), website: S('Website'), hiring: B('Has open jobs on BinaSmart'), confirmed: B('Checked by the company'), url: S('bina.et page') }), note, source_url }),
+  list_cinema_showtimes: out({ today: S('Date of the programme'), count, cinemas: A('Cinemas with their films and times', { cinema: S('Cinema'), address: S('Address'), phone: S('Phone'), url: S('bina.et page') }),
+    cinemas_listed: A('Cinemas with no programme posted right now', { cinema: S('Cinema'), phone: S('Phone'), url: S('bina.et page') }), note, source_url }),
+  list_tv_and_radio: out({ count, channels: A('TV channels and radio stations', { name: S('Name'), name_am: S('Name in Amharic'), kind: S('tv or radio'), live_now: B('Live right now'), live_title: S('Live programme'), live_url: S('Live link'), website: S('Own website') }), note, source_url }),
+  list_tv_series: out({ count, series: A('Series with their newest episodes', { title: S('Title'), title_am: S('Title in Amharic'), channel: S('Channel'), playlist_url: S('All episodes') }), note, source_url }),
+});

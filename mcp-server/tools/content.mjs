@@ -1,3 +1,5 @@
+import { PLACES_WIDGET_URI } from '../lib/widgets.mjs';
+import { registerAppTool } from '@modelcontextprotocol/ext-apps/server';
 import { z } from 'zod';
 import { toolError } from './ride.mjs';
 import { htmlToText } from '../lib/html.mjs';
@@ -71,7 +73,7 @@ export function registerContentTools(server, { db, wrap, json }) {
     catch (e) { console.error('[mcp/content]', e.message); return toolError('BinaSmart tenders and news are temporarily unavailable. Try again shortly or browse https://bina.et/tenders.'); }
   };
 
-  server.registerTool('list_tenders', {
+  registerAppTool(server, 'list_tenders', {
     title: 'Open tenders in Ethiopia',
     description: 'Public tender and procurement notices in Ethiopia listed on BinaSmart (bina.et/tenders): the issuing organisation, what is wanted, the deadline and days left, budget when stated, and a link to the original notice. Banks, government bodies, NGOs and World Bank–financed projects. Open tenders only unless include_closed is set. Search by keyword (English or Amharic) and filter by category such as Supply, Construction, Consultancy, Services, Transport.',
     inputSchema: {
@@ -82,6 +84,7 @@ export function registerContentTools(server, { db, wrap, json }) {
       newest: z.boolean().optional().describe('Newest published first, for "new", "latest", "today" or "this week" (default: closing soonest first). Each tender has published_at, the date that shows whether it is new.'),
     },
     annotations: { readOnlyHint: true, openWorldHint: false },
+    _meta: { ui: { resourceUri: PLACES_WIDGET_URI } },   // cards in hosts with MCP Apps (19 Oct 2026); the JSON is unchanged
   }, wrap('list_tenders', guard(async ({ query, category, include_closed, limit, newest }) => {
     const { rows } = await db.query(SQL.tenders, [!!include_closed, query ? like(query) : null, category ? like(category) : null, limit || 20, !!newest]);
     if (!rows.length) {

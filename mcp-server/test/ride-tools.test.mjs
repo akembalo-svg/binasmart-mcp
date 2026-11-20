@@ -104,3 +104,20 @@ test('get_ride_status / cancel_ride pass phone through and map errors', async ()
   const late = await t5.cancel_ride({ ride_id: 'r1', rider_phone: '0900000011' });
   assert.match(late.content[0].text, /no longer be cancelled/);
 });
+
+test('17 Nov: quote_ride says when no driver is near the pickup, so the assistant tells the user before booking', async () => {
+  const api = fakeApi();
+  api.quote = async () => ({ ok: true, distanceM: 5200, durationS: 900, estimate: false, quotes: [
+    { tier: 'economy', fareEtb: 250, etaMin: 15, label: 'Economy', labelAm: 'ኢኮኖሚ', seats: 4, driversNear: 0 },
+    { tier: 'bajaj', fareEtb: 150, etaMin: 15, label: 'Bajaj', labelAm: 'ባጃጅ', seats: 3, driversNear: 0 }] });
+  const r = out(await tools(api).quote_ride({ pickup: 'edna', dropoff: '9.03,38.75' }));
+  assert.equal(r.quotes[0].drivers_near, 0);
+  assert.equal(r.drivers_available, false);
+  assert.match(r.note, /^No driver is free near the pickup right now/);
+  const api2 = fakeApi();
+  api2.quote = async () => ({ ok: true, distanceM: 5200, durationS: 900, estimate: false, quotes: [
+    { tier: 'economy', fareEtb: 250, etaMin: 15, label: 'Economy', labelAm: 'ኢኮኖሚ', seats: 4, driversNear: 2 }] });
+  const r2 = out(await tools(api2).quote_ride({ pickup: 'edna', dropoff: '9.03,38.75' }));
+  assert.equal(r2.drivers_available, true);
+  assert.doesNotMatch(r2.note, /No driver/);
+});

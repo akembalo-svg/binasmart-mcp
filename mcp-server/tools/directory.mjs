@@ -1,3 +1,5 @@
+import { PLACES_WIDGET_URI } from '../lib/widgets.mjs';
+import { registerAppTool } from '@modelcontextprotocol/ext-apps/server';
 import { z } from 'zod';
 // The same rule the website uses, so the three surfaces cannot drift apart. See hotels/rules.js and
 // test/hotels.test.js in the parent app.
@@ -118,11 +120,12 @@ export function registerDirectoryTools(server, { db, wrap, json, fetchImpl }) {
       map_note: mapNote, source_url: `${BASE}/` });
   })));
 
-  server.registerTool('list_events', {
+  registerAppTool(server, 'list_events', {
     title: 'Upcoming events',
     description: 'Upcoming films, concerts, theatre and events on BinaSmart in Addis Ababa with venue, hall, start time, prices per tier and seats left. Seats are chosen and paid at the url returned (Chapa or at the counter); the ticket is a QR code.',
     inputSchema: {},
     annotations: { readOnlyHint: true, openWorldHint: false },
+    _meta: { ui: { resourceUri: PLACES_WIDGET_URI } },   // cards in hosts with MCP Apps (19 Oct 2026); the JSON is unchanged
   }, wrap('list_events', guard(async () => {
     const { rows } = await db.query(SQL.events, []);
     const events = rows.map(s => {

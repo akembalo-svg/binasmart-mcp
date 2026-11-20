@@ -32,7 +32,7 @@ const TERMS = 'https://bina.et/terms#api';
 
 function makeGate({
   dir = process.env.API_USAGE_DIR || DEFAULT_DIR,
-  proc = 'api',
+  proc = process.env.API_USAGE_PROC || 'api',
   // The header nginx guarantees for THIS location, so a request that lacks it really did arrive on
   // loopback. bina.et's `location /` always adds X-Forwarded-For; `location ^~ /mcp` always adds
   // X-Real-IP. Both are set by nginx AFTER any client copy, so neither can be forged from outside.

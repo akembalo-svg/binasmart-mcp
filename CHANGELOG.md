@@ -3,6 +3,15 @@
 All notable changes to the BinaSmart MCP server (`https://bina.et/mcp`, registry name `et.bina/binasmart`).
 Versions follow [Semantic Versioning](https://semver.org): a new tool or parameter is a minor version, a fix or a clearer description is a patch.
 
+## [1.4.2] - 2026-11-20
+### Added
+- New directory tools (`tools/services.mjs`): restaurants, pharmacies (with recent medicine reports), hotels, cinema showtimes, TV and radio, TV series, companies.
+- A2A (Agent2Agent 0.3) endpoint at `https://bina.et/a2a`, agent card at `/.well-known/agent-card.json`; ride booking stays MCP-only.
+- A places map widget (`widgets/places.html`).
+### Changed
+- `quote_ride` returns `drivers_near` per tier and says plainly when no driver is near the pickup, before anyone books.
+- `x-binasmart-eval: 1` only marks a dry run when it comes from the server itself (`api/evalGate.js`).
+
 ## [1.3.2] - 2026-10-11
 ### Changed
 - Every tool also carries its title in `annotations.title` (MCP ToolAnnotations), which the Claude directory reads; the server copies each tool's title there, so new tools get it too.
