@@ -91,7 +91,7 @@ const TEST_NOTE = 'Reviewer test number: nothing was sent to a dispatcher or a d
 export function registerRideTools(server, { api, wrap, json }) {
   server.registerTool('quote_ride', {
     title: 'Quote a BinaSmart ride',
-    description: 'Fixed upfront price for a ride inside Addis Ababa, Ethiopia — no surge, cash or telebirr/Chapa. Returns distance, ETA and the fare for every vehicle tier (moto, bajaj, economy, comfort, XL). request_ride books at the fare this returns. Also returns book_url: a one-tap bina.et link with this route and fare for the user to confirm.',
+    description: 'Fixed upfront price for a ride inside Addis Ababa, Ethiopia — no surge, paid to the driver in cash or by telebirr transfer (in-app Chapa payment is coming soon, not live yet). Returns distance, ETA and the fare for every vehicle tier (moto, bajaj, economy, comfort, XL). request_ride books at the fare this returns. Also returns book_url: a one-tap bina.et link with this route and fare for the user to confirm.',
     inputSchema: { pickup: z.string().min(2).max(120).describe(placeDesc('Pickup')), dropoff: z.string().min(2).max(120).describe(placeDesc('Drop-off')) },
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, wrap('quote_ride', async ({ pickup, dropoff }) => {
@@ -101,7 +101,7 @@ export function registerRideTools(server, { api, wrap, json }) {
       return json({ pickup: r.from.label, dropoff: r.to.label, distance_km: Math.round(q.distanceM / 100) / 10, eta_min: Math.round(q.durationS / 60), estimate: !!q.estimate,
         quotes: q.quotes.map(x => ({ ...pubQuote(x), book_url: bookUrl(r.from, r.to, x.tier) })),
         book_url: bookUrl(r.from, r.to), drivers_available: driversAvailable(q.quotes),
-        note: (driversAvailable(q.quotes) === false ? NO_DRIVER_NOTE : '') + 'Fixed price, no surge. Pay cash or telebirr/Chapa. Addis Ababa only. To book: either confirm the details with the user and call request_ride, or give the user book_url (or the chosen tier\x27s book_url): it opens bina.et/ride with this route and fare, and they confirm with their phone.', pickup_coords: `${r.from.lat},${r.from.lng}`, dropoff_coords: `${r.to.lat},${r.to.lng}`, source_url: `${BASE}/ride` });
+        note: (driversAvailable(q.quotes) === false ? NO_DRIVER_NOTE : '') + 'Fixed price, no surge. Pay the driver in cash or by telebirr transfer; in-app Chapa payment is coming soon, not live yet. Addis Ababa only. To book: either confirm the details with the user and call request_ride, or give the user book_url (or the chosen tier\x27s book_url): it opens bina.et/ride with this route and fare, and they confirm with their phone.', pickup_coords: `${r.from.lat},${r.from.lng}`, dropoff_coords: `${r.to.lat},${r.to.lng}`, source_url: `${BASE}/ride` });
     } catch (e) { return apiErrorToTool(e); }
   }));
 
@@ -114,7 +114,7 @@ export function registerRideTools(server, { api, wrap, json }) {
       dropoff: z.string().min(2).max(120).describe(placeDesc('Drop-off') + ' Prefer the dropoff_coords from quote_ride.'),
       rider_name: z.string().min(1).max(60).describe('Rider\'s name (or the booker\'s name when booking for someone else)'),
       rider_phone: z.string().min(9).max(20).describe('Ethiopian mobile: 09XXXXXXXX or +2519XXXXXXXX (any number if booking for someone else)'),
-      payment_method: z.enum(['cash', 'chapa']).optional().describe('cash (default) or chapa (telebirr/card link)'),
+      payment_method: z.enum(['cash', 'chapa']).optional().describe('cash (default; the rider pays the driver in cash or by telebirr transfer). chapa (in-app telebirr/card link) is not live yet: until it is, the ride is booked as cash'),
       passenger_name: z.string().min(1).max(60).optional().describe('Book for someone else: the passenger\'s name (the driver calls the passenger)'),
       passenger_phone: z.string().min(9).max(20).optional().describe('Book for someone else: the passenger\'s Ethiopian mobile (09… or +2519…)'),
     },

@@ -3,6 +3,10 @@
 All notable changes to the BinaSmart MCP server (`https://bina.et/mcp`, registry name `et.bina/binasmart`).
 Versions follow [Semantic Versioning](https://semver.org): a new tool or parameter is a minor version, a fix or a clearer description is a patch.
 
+## [1.4.3] - 2026-11-20
+### Changed
+- `quote_ride`, `request_ride` and the output schema say how riders really pay: the driver, in cash or by telebirr transfer. In-app Chapa payment is not live yet, and a `chapa` booking is recorded as cash until it is.
+
 ## [1.4.2] - 2026-11-20
 ### Added
 - New directory tools (`tools/services.mjs`): restaurants, pharmacies (with recent medicine reports), hotels, cinema showtimes, TV and radio, TV series, companies.

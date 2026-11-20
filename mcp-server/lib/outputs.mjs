@@ -19,7 +19,7 @@ const count = N('Number of items returned');
 
 const RIDE = {
   ride_id: S('Ride id (needed for get_ride_status and cancel_ride)'), status: S('dispatching, assigned, arriving, arrived, ontrip, completed, cancelled, or test_booking'),
-  tier: S('Vehicle tier'), fare_etb: NS('Fixed fare in birr'), payment_method: S('cash, telebirr or chapa'), payment_status: S('Payment status'),
+  tier: S('Vehicle tier'), fare_etb: NS('Fixed fare in birr'), payment_method: S('cash: paid to the driver in cash or by telebirr transfer (in-app chapa not live yet)'), payment_status: S('Payment status'),
   pickup: S('Pickup place'), dropoff: S('Drop-off place'), requested_at: S('When the ride was requested (ISO time)'),
   driver: O('Assigned driver, null until one is assigned', { name: S('Driver name'), phone: S('Driver phone'), vehicle: z.any().describe('Vehicle'), plate: S('Plate number'), rating: NS('Driver rating') }),
   tracking_url: S('Live tracking page'), test: B('true for a reviewer test booking (no driver is sent)'), source_url,

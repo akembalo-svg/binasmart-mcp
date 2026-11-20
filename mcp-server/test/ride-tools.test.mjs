@@ -121,3 +121,11 @@ test('17 Nov: quote_ride says when no driver is near the pickup, so the assistan
   assert.equal(r2.drivers_available, true);
   assert.doesNotMatch(r2.note, /No driver/);
 });
+
+// 20 Nov 2026: in-app payment is still CHAPA_MODE=test and every booking is saved as cash, but quote_ride told
+// assistants "Pay cash or telebirr/Chapa". The note must not promise a payment the ride route cannot take.
+test('quote_ride does not promise in-app telebirr/Chapa payment while it is not live', async () => {
+  const src = (await import('node:fs')).readFileSync(new URL('../tools/ride.mjs', import.meta.url), 'utf8');
+  assert.doesNotMatch(src, /Pay cash or telebirr/);
+  assert.match(src, /Pay the driver in cash or by telebirr transfer; in-app Chapa payment is coming soon/);
+});
